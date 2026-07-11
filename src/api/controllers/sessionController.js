@@ -38,14 +38,37 @@ export const joinSessionByTable = async (req, res, next) => {
     if (tableByNumber) {
       targetTableId = tableByNumber.id;
     }
+
+    const [table] = await db('tables').where({ id: targetTableId }).limit(1);
+    if (!table) {
+      return res.status(404).json({ error: 'Table not found' });
+    }
     
-    // Find active session for this table
-    const [session] = await db('sessions')
-      .where({ table_id: targetTableId, status: 'active' })
+    // Reuse an open session when available, otherwise let the customer start one.
+    let [session] = await db('sessions')
+      .where({ table_id: targetTableId })
+      .whereIn('status', ['active', 'bill_requested'])
+      .orderBy('created_at', 'desc')
       .limit(1);
-    
+
     if (!session) {
-      return res.status(404).json({ error: 'No active session found for this table' });
+      const sessionId = uuidv4();
+
+      await insertUsingKnownColumns('sessions', {
+        id: sessionId,
+        restaurant_id: table.restaurant_id,
+        table_id: table.id,
+        status: 'active',
+        created_at: new Date(),
+        updated_at: new Date()
+      });
+
+      await db('tables').where({ id: table.id }).update({
+        status: 'active',
+        updated_at: new Date()
+      });
+
+      [session] = await db('sessions').where({ id: sessionId }).limit(1);
     }
 
     // Generate guest token
