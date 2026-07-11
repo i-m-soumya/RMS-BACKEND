@@ -1,4 +1,6 @@
 import db from '../../db/connection.js';
+import { v4 as uuidv4 } from 'uuid';
+import { insertUsingKnownColumns } from '../../db/tableMeta.js';
 
 export const getSession = async (req, res, next) => {
   try {
@@ -18,11 +20,28 @@ export const getSession = async (req, res, next) => {
 export const joinSessionByTable = async (req, res, next) => {
   try {
     const { tableId } = req.params;
-    const customerId = req.user ? req.user.id : null;
+    let customerId = req.user ? req.user.id : null;
+
+    if (!customerId) {
+      customerId = uuidv4();
+      await insertUsingKnownColumns('customers', {
+        id: customerId,
+        name: 'Guest User',
+        is_registered: 0,
+        created_at: new Date(),
+        updated_at: new Date()
+      });
+    }
+
+    let targetTableId = tableId;
+    const [tableByNumber] = await db('tables').where({ table_number: tableId }).limit(1);
+    if (tableByNumber) {
+      targetTableId = tableByNumber.id;
+    }
     
     // Find active session for this table
     const [session] = await db('sessions')
-      .where({ table_id: tableId, status: 'active' })
+      .where({ table_id: targetTableId, status: 'active' })
       .limit(1);
     
     if (!session) {
@@ -30,13 +49,12 @@ export const joinSessionByTable = async (req, res, next) => {
     }
 
     // Generate guest token
-    const { v4: uuidv4 } = await import('uuid');
     const guestToken = uuidv4();
 
     // Since our DB uses customer_guest_tokens (instead of session_customers)
     await db('customer_guest_tokens').insert({
       id: uuidv4(),
-      customer_id: customerId || null,
+      customer_id: customerId,
       token: guestToken,
       restaurant_id: session.restaurant_id,
       session_id: session.id,

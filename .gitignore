@@ -55,3 +55,6 @@ secrets/
 
 # Misc
 *.swp
+
+# Local API tooling
+postman/*.json

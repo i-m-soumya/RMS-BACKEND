@@ -5,6 +5,6 @@ export const slugParamSchema = z.object({
 });
 
 export const tableParamSchema = z.object({
-  id: z.string().uuid(),
-  tableId: z.string().uuid()
+  id: z.string().min(2).max(120),
+  tableId: z.string().min(1).max(120)
 });
