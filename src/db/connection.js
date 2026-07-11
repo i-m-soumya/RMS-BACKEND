@@ -30,28 +30,59 @@ export function buildConnectionConfig() {
   };
 }
 
-export async function validateDbConnection() {
+export async function checkDbHealth() {
   const connection = buildConnectionConfig();
 
   if (!connection.host) {
-    const error = new Error('Database host is not configured. Set DATABASE_URL or DB_HOST.');
-    error.code = 'DB_CONFIG_MISSING';
-    throw error;
+    return {
+      ok: false,
+      status: 'down',
+      code: 'DB_CONFIG_MISSING',
+      message: 'Database host is not configured. Set DATABASE_URL or DB_HOST.'
+    };
   }
 
   try {
     await db.raw('SELECT 1');
+
+    return {
+      ok: true,
+      status: 'up',
+      host: connection.host,
+      database: connection.database
+    };
   } catch (error) {
     if (error.code === 'ENOTFOUND') {
-      const host = connection.host;
-      const wrappedError = new Error(`Database host \"${host}\" could not be resolved. Check Railway environment variables for DATABASE_URL or DB_HOST.`);
-      wrappedError.code = 'DB_HOST_UNRESOLVABLE';
-      wrappedError.cause = error;
-      throw wrappedError;
+      return {
+        ok: false,
+        status: 'down',
+        code: 'DB_HOST_UNRESOLVABLE',
+        message: `Database host \"${connection.host}\" could not be resolved. Check Railway environment variables for DATABASE_URL or DB_HOST.`,
+        host: connection.host
+      };
     }
 
-    throw error;
+    return {
+      ok: false,
+      status: 'down',
+      code: error.code || 'DB_CONNECTION_FAILED',
+      message: error.message,
+      host: connection.host,
+      database: connection.database
+    };
   }
+}
+
+export async function validateDbConnection() {
+  const health = await checkDbHealth();
+
+  if (health.ok) {
+    return;
+  }
+
+  const error = new Error(health.message);
+  error.code = health.code;
+  throw error;
 }
 
 const db = knex({

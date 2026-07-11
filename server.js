@@ -6,7 +6,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import { setupSockets } from './src/socket/index.js';
-import { validateDbConnection } from './src/db/connection.js';
+import { checkDbHealth } from './src/db/connection.js';
 import { errorHandler } from './src/api/middleware/errorHandler.js';
 import { notFoundHandler } from './src/api/middleware/notFound.js';
 import { assignRequestId } from './src/api/middleware/requestContext.js';
@@ -51,12 +51,24 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 
 // API Health check route
-app.get('/api/health', (req, res) => {
-  res.status(200).json({
-    status: 'healthy',
+app.get('/api/health', async (req, res) => {
+  const dbHealth = await checkDbHealth();
+  const isHealthy = dbHealth.ok;
+
+  res.status(isHealthy ? 200 : 503).json({
+    status: isHealthy ? 'healthy' : 'unhealthy',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    service: 'RMS API & Socket Server'
+    service: 'RMS API & Socket Server',
+    database: {
+      status: dbHealth.status,
+      ...(dbHealth.host && { host: dbHealth.host }),
+      ...(dbHealth.database && { database: dbHealth.database }),
+      ...(!dbHealth.ok && {
+        code: dbHealth.code,
+        message: dbHealth.message
+      })
+    }
   });
 });
 
@@ -78,7 +90,10 @@ app.use(errorHandler);
 // Bind socket connection pathways
 setupSockets(io);
 
-await validateDbConnection();
+const startupDbHealth = await checkDbHealth();
+if (!startupDbHealth.ok) {
+  console.error(`Database health check failed during startup: ${startupDbHealth.message}`);
+}
 
 // Server startup listener
 const PORT = process.env.PORT || 5000;
