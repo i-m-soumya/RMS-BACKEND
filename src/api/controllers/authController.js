@@ -84,7 +84,12 @@ export const staffLogin = async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
-    const [staff] = await db('staff').where('email', email).andWhere('deleted_at', null).limit(1);
+    const [staff] = await db('staff')
+      .where('staff.email', email)
+      .andWhere('staff.deleted_at', null)
+      .join('restaurants', 'staff.restaurant_id', 'restaurants.id')
+      .select('staff.*', 'restaurants.slug as restaurant_slug')
+      .limit(1);
 
     if (!staff || staff.access === 'revoked') {
       return res.status(401).json({ error: 'Invalid email or password' });
@@ -107,8 +112,10 @@ export const staffLogin = async (req, res, next) => {
     const userPayload = {
       id: staff.id,
       name: staff.name,
+      email: staff.email,
       role: staff.role,
       restaurantId: staff.restaurant_id,
+      restaurantSlug: staff.restaurant_slug,
       permissions
     };
 
@@ -139,6 +146,7 @@ export const platformAdminLogin = async (req, res, next) => {
     const userPayload = {
       id: admin.id,
       name: admin.name,
+      email: admin.email,
       role: 'platform_admin',
       permissions: ['platform:read', 'platform:write']
     };
@@ -147,6 +155,75 @@ export const platformAdminLogin = async (req, res, next) => {
     const refreshToken = signRefreshToken(userPayload);
 
     res.json({ token, refreshToken, user: userPayload });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const consoleLogin = async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+
+    // Try staff login first
+    const [staff] = await db('staff')
+      .where('staff.email', email)
+      .andWhere('staff.deleted_at', null)
+      .join('restaurants', 'staff.restaurant_id', 'restaurants.id')
+      .select('staff.*', 'restaurants.slug as restaurant_slug')
+      .limit(1);
+
+    if (staff && staff.access !== 'revoked') {
+      const isValid = await bcrypt.compare(password, staff.password_hash);
+      if (isValid) {
+        const permissions = [];
+        if (staff.role === 'restaurant_admin') {
+          permissions.push('menu:read', 'menu:write', 'order:read', 'order:update', 'session:read', 'session:write', 'staff:read', 'staff:write');
+        } else if (staff.role === 'waiter') {
+          permissions.push('menu:read', 'order:read', 'order:update', 'session:read', 'session:write');
+        } else if (staff.role === 'chef') {
+          permissions.push('menu:read', 'order:read', 'order:update');
+        }
+
+        const userPayload = {
+          id: staff.id,
+          name: staff.name,
+          email: staff.email,
+          role: staff.role,
+          restaurantId: staff.restaurant_id,
+          restaurantSlug: staff.restaurant_slug,
+          permissions
+        };
+
+        const token = signToken(userPayload);
+        const refreshToken = signRefreshToken(userPayload);
+
+        return res.json({ token, refreshToken, user: userPayload });
+      }
+    }
+
+    // Try platform admin login
+    const [admin] = await db('platform_admins').where('email', email).limit(1);
+
+    if (admin && admin.is_active) {
+      const isValid = await bcrypt.compare(password, admin.password_hash);
+      if (isValid) {
+        const userPayload = {
+          id: admin.id,
+          name: admin.name,
+          email: admin.email,
+          role: 'platform_admin',
+          permissions: ['platform:read', 'platform:write']
+        };
+
+        const token = signToken(userPayload);
+        const refreshToken = signRefreshToken(userPayload);
+
+        return res.json({ token, refreshToken, user: userPayload });
+      }
+    }
+
+    // No valid user found
+    return res.status(401).json({ error: 'Invalid email or password' });
   } catch (error) {
     next(error);
   }
@@ -165,14 +242,16 @@ export const refreshToken = async (req, res, next) => {
       const payload = {
         id: decoded.id,
         name: decoded.name,
+        email: decoded.email,
         role: decoded.role,
         permissions: decoded.permissions,
-        restaurantId: decoded.restaurantId
+        restaurantId: decoded.restaurantId,
+        restaurantSlug: decoded.restaurantSlug
       };
       
       const newToken = signToken(payload);
       const newRefreshToken = signRefreshToken(payload);
-      res.json({ token: newToken, refreshToken: newRefreshToken });
+      res.json({ token: newToken, refreshToken: newRefreshToken, user: payload });
     } catch (e) {
       res.status(403).json({ error: 'Invalid refresh token' });
     }

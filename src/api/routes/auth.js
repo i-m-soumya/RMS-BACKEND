@@ -4,6 +4,7 @@ import {
   customerRegister, 
   staffLogin, 
   platformAdminLogin,
+  consoleLogin,
   refreshToken
 } from '../controllers/authController.js';
 import { validate } from '../middleware/validate.js';
@@ -21,6 +22,7 @@ router.post('/customer-login', authLimiter, validate(customerLoginSchema), custo
 router.post('/customer-register', authLimiter, validate(customerRegisterSchema), customerRegister);
 router.post('/staff-login', authLimiter, validate(staffLoginSchema), staffLogin);
 router.post('/platform-admin-login', authLimiter, validate(staffLoginSchema), platformAdminLogin);
+router.post('/console-login', authLimiter, validate(staffLoginSchema), consoleLogin);
 router.post('/refresh', authLimiter, validate(refreshSchema), refreshToken);
 
 export default router;
