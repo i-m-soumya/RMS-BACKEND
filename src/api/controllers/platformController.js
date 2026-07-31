@@ -1,5 +1,5 @@
 import bcrypt from 'bcrypt';
-import archiver from 'archiver';
+//import archiver from 'archiver';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../../db/connection.js';
 import { sendAdminCredentialsEmail } from '../../services/emailService.js';
