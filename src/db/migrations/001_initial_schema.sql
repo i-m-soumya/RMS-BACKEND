@@ -9,27 +9,31 @@ DROP PROCEDURE IF EXISTS rms_apply_initial_schema //
 CREATE PROCEDURE rms_apply_initial_schema()
 BEGIN
   DECLARE existing_count INT DEFAULT 0;
+  DECLARE should_cleanup TINYINT DEFAULT 1;
 
   DECLARE EXIT HANDLER FOR SQLEXCEPTION
   BEGIN
-    -- Best-effort cleanup to avoid partial schema after a failed run.
-    DROP TABLE IF EXISTS ratings;
-    DROP TABLE IF EXISTS bills;
-    DROP TABLE IF EXISTS order_items;
-    DROP TABLE IF EXISTS orders;
-    DROP TABLE IF EXISTS menu_item_categories;
-    DROP TABLE IF EXISTS menu_items;
-    DROP TABLE IF EXISTS menu_categories;
-    DROP TABLE IF EXISTS customer_guest_tokens;
-    DROP TABLE IF EXISTS sessions;
-    DROP TABLE IF EXISTS tables;
-    DROP TABLE IF EXISTS floors;
-    DROP TABLE IF EXISTS operating_hours;
-    DROP TABLE IF EXISTS restaurant_holidays;
-    DROP TABLE IF EXISTS staff;
-    DROP TABLE IF EXISTS customers;
-    DROP TABLE IF EXISTS restaurants;
-    DROP TABLE IF EXISTS platform_admins;
+    -- Cleanup only for unexpected failures during table creation.
+    -- For intentional aborts (e.g., pre-existing tables), skip destructive cleanup.
+    IF should_cleanup = 1 THEN
+      DROP TABLE IF EXISTS ratings;
+      DROP TABLE IF EXISTS bills;
+      DROP TABLE IF EXISTS order_items;
+      DROP TABLE IF EXISTS orders;
+      DROP TABLE IF EXISTS menu_item_categories;
+      DROP TABLE IF EXISTS menu_items;
+      DROP TABLE IF EXISTS menu_categories;
+      DROP TABLE IF EXISTS customer_guest_tokens;
+      DROP TABLE IF EXISTS sessions;
+      DROP TABLE IF EXISTS tables;
+      DROP TABLE IF EXISTS floors;
+      DROP TABLE IF EXISTS operating_hours;
+      DROP TABLE IF EXISTS restaurant_holidays;
+      DROP TABLE IF EXISTS staff;
+      DROP TABLE IF EXISTS customers;
+      DROP TABLE IF EXISTS restaurants;
+      DROP TABLE IF EXISTS platform_admins;
+    END IF;
 
     RESIGNAL;
   END;
@@ -58,6 +62,7 @@ BEGIN
     );
 
   IF existing_count > 0 THEN
+    SET should_cleanup = 0;
     SIGNAL SQLSTATE '45000'
       SET MESSAGE_TEXT = 'Migration aborted: one or more RMS target tables already exist. Use a separate explicit migration plan.';
   END IF;

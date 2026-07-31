@@ -6,38 +6,43 @@ async function seed() {
   try {
     console.log('Seeding data...');
 
-    // Clean up
-    await db('bill_line_items').del();
+    // Clean up in FK-safe order
+    await db('ratings').del();
     await db('bills').del();
     await db('order_items').del();
     await db('orders').del();
-    await db('session_members').del();
+    await db('customer_guest_tokens').del();
     await db('sessions').del();
     await db('tables').del();
     await db('floors').del();
+    await db('restaurant_holidays').del();
+    await db('operating_hours').del();
     await db('menu_item_categories').del();
     await db('menu_items').del();
     await db('menu_categories').del();
     await db('staff').del();
+    await db('customers').del();
     await db('restaurants').del();
     await db('platform_admins').del();
+
+    const testPasswordHash = await bcrypt.hash('password123', 10);
 
     const adminId = uuidv4();
     await db('platform_admins').insert({
       id: adminId,
-      name: 'Super Admin',
-      email: 'admin@rms.com',
-      password_hash: await bcrypt.hash('password123', 10),
-      role: 'super',
+      name: 'Platform Admin',
+      email: 'platform@example.com',
+      password_hash: testPasswordHash,
       is_active: 1
     });
 
     const restaurantId = uuidv4();
     await db('restaurants').insert({
       id: restaurantId,
-      name: 'Spice Garden',
-      slug: 'spice-garden',
-      address: '123 MG Road',
+      name: 'Burger Co',
+      legal_name: 'Burger Co Foods Pvt Ltd',
+      slug: 'burger-co',
+      address: '123 MG Road, Mumbai',
       city: 'Mumbai',
       state: 'Maharashtra',
       pincode: '400001',
@@ -55,8 +60,8 @@ async function seed() {
         id: staffId1,
         restaurant_id: restaurantId,
         name: 'Restaurant Admin',
-        email: 'manager@spicegarden.com',
-        password_hash: await bcrypt.hash('password123', 10),
+        email: 'admin@burger-co.local',
+        password_hash: testPasswordHash,
         role: 'restaurant_admin',
         access: 'active',
         created_by_platform_admin_id: adminId
@@ -64,9 +69,9 @@ async function seed() {
       {
         id: staffId2,
         restaurant_id: restaurantId,
-        name: 'Waiter John',
-        email: 'waiter@spicegarden.com',
-        password_hash: await bcrypt.hash('password123', 10),
+        name: 'Waiter',
+        email: 'waiter@burger-co.local',
+        password_hash: testPasswordHash,
         role: 'waiter',
         access: 'active',
         created_by_platform_admin_id: adminId
@@ -74,14 +79,23 @@ async function seed() {
       {
         id: staffId3,
         restaurant_id: restaurantId,
-        name: 'Chef Maria',
-        email: 'chef@spicegarden.com',
-        password_hash: await bcrypt.hash('password123', 10),
+        name: 'Chef',
+        email: 'chef@burger-co.local',
+        password_hash: testPasswordHash,
         role: 'chef',
         access: 'active',
         created_by_platform_admin_id: adminId
       }
     ]);
+
+    const customerId = uuidv4();
+    await db('customers').insert({
+      id: customerId,
+      name: 'Test Customer',
+      email: 'customer@example.com',
+      password_hash: testPasswordHash,
+      is_registered: 1
+    });
 
     const floorId = uuidv4();
     await db('floors').insert({
@@ -166,7 +180,7 @@ async function seed() {
         menu_item_id: item2Id,
         category_id: catMainsId,
         restaurant_id: restaurantId,
-        display_order: 1,
+        display_order: 2,
         is_primary_category: 1,
         is_active: 1
       }
