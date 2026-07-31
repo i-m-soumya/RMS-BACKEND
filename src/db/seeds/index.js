@@ -42,6 +42,7 @@ async function seed() {
       name: 'Burger Co',
       legal_name: 'Burger Co Foods Pvt Ltd',
       slug: 'burger-co',
+      contact_email: 'hello@burger-co.local',
       address: '123 MG Road, Mumbai',
       city: 'Mumbai',
       state: 'Maharashtra',

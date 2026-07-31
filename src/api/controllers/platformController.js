@@ -1,5 +1,5 @@
 import bcrypt from 'bcrypt';
-import * as archiverPackage from 'archiver';
+import archiver from 'archiver';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../../db/connection.js';
 import { sendAdminCredentialsEmail } from '../../services/emailService.js';
@@ -8,8 +8,6 @@ import {
   generateQrDataUrl,
   generateQrPngBuffer,
 } from '../../services/qrService.js';
-
-const archiver = archiverPackage.default ?? archiverPackage;
 
 function makeTempPassword() {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$';

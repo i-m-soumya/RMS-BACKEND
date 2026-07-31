@@ -37,6 +37,24 @@ async function addForeignKeyIfMissing(constraintName, sql) {
   }
 }
 
+async function ensureColumnNullable(tableName, columnName) {
+  const [rows] = await db.raw(
+    `SELECT column_type AS columnType, is_nullable AS isNullable
+     FROM information_schema.columns
+     WHERE table_schema = DATABASE()
+       AND table_name = ?
+       AND column_name = ?`,
+    [tableName, columnName],
+  );
+
+  const column = rows[0];
+  if (!column || column.isNullable === 'YES') {
+    return;
+  }
+
+  await db.raw(`ALTER TABLE \`${tableName}\` MODIFY \`${columnName}\` ${column.columnType} NULL`);
+}
+
 export async function up() {
   await addColumnIfMissing('restaurants', 'legal_name', (table) => table.string('legal_name', 200).nullable());
   await addColumnIfMissing('restaurants', 'address', (table) => table.string('address', 255).nullable());
@@ -45,6 +63,7 @@ export async function up() {
   await addColumnIfMissing('restaurants', 'currency', (table) => table.string('currency', 10).notNullable().defaultTo('INR'));
   await addColumnIfMissing('restaurants', 'onboarded_by', (table) => table.string('onboarded_by', 36).nullable());
   await addColumnIfMissing('restaurants', 'table_count', (table) => table.integer('table_count').notNullable().defaultTo(0));
+  await ensureColumnNullable('restaurants', 'onboarded_by');
 
   await addForeignKeyIfMissing(
     'fk_restaurants_onboarded_by',
@@ -111,7 +130,9 @@ export async function up() {
   await addIndexIfMissing('idx_email_logs_recipient', 'CREATE INDEX idx_email_logs_recipient ON email_logs(recipient_email)');
   await addIndexIfMissing('idx_email_logs_created_at', 'CREATE INDEX idx_email_logs_created_at ON email_logs(created_at)');
 
-  await db.raw('UPDATE tables SET seating_capacity = capacity WHERE seating_capacity IS NULL');
+  if (await db.schema.hasColumn('tables', 'capacity')) {
+    await db.raw('UPDATE tables SET seating_capacity = capacity WHERE seating_capacity IS NULL');
+  }
   await db.raw('UPDATE restaurants r SET r.table_count = (SELECT COUNT(*) FROM tables t WHERE t.restaurant_id = r.id)');
 }
 
