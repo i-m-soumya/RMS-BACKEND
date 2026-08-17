@@ -26,13 +26,36 @@ export async function sendAdminCredentialsEmail({
   restaurantName,
   tempPassword,
 }) {
+  return sendStaffCredentialsEmail({
+    to,
+    staffName: adminName,
+    restaurantName,
+    role: 'restaurant_admin',
+    tempPassword,
+  });
+}
+
+export async function sendStaffCredentialsEmail({
+  to,
+  staffName,
+  restaurantName,
+  role,
+  tempPassword,
+}) {
   const transporter = buildTransporter();
   const from = process.env.MAIL_FROM || 'no-reply@rms.local';
   const subject = `Your ${restaurantName} RMS Admin Access`;
+  const roleLabel = role === 'restaurant_admin'
+    ? 'Restaurant Admin'
+    : role === 'waiter'
+      ? 'Waiter'
+      : role === 'chef'
+        ? 'Chef'
+        : 'Staff';
   const text = [
-    `Hello ${adminName},`,
+    `Hello ${staffName},`,
     '',
-    `You have been added as Restaurant Admin for ${restaurantName}.`,
+    `You have been added as ${roleLabel} for ${restaurantName}.`,
     'Login URL: /console',
     `Email: ${to}`,
     `Temporary Password: ${tempPassword}`,
@@ -41,8 +64,8 @@ export async function sendAdminCredentialsEmail({
   ].join('\n');
 
   const html = `
-    <p>Hello ${adminName},</p>
-    <p>You have been added as <strong>Restaurant Admin</strong> for <strong>${restaurantName}</strong>.</p>
+    <p>Hello ${staffName},</p>
+    <p>You have been added as <strong>${roleLabel}</strong> for <strong>${restaurantName}</strong>.</p>
     <p>
       <strong>Email:</strong> ${to}<br/>
       <strong>Temporary Password:</strong> ${tempPassword}
