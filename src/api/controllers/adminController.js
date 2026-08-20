@@ -68,8 +68,8 @@ async function getItemCategoriesByItemIds(restaurantId, itemIds) {
     .where('mic.restaurant_id', restaurantId)
     .whereIn('mic.menu_item_id', itemIds)
     .andWhere('mic.is_active', 1)
-    .andWhereNull('mic.deleted_at')
-    .andWhereNull('mc.deleted_at')
+    .whereNull('mic.deleted_at')
+    .whereNull('mc.deleted_at')
     .select(
       'mic.menu_item_id',
       'mc.id as category_id',
@@ -98,7 +98,7 @@ async function assertValidCategoryIds(trx, restaurantId, categoryIds) {
   const rows = await trx('menu_categories')
     .where('restaurant_id', restaurantId)
     .whereIn('id', categoryIds)
-    .andWhereNull('deleted_at')
+    .whereNull('deleted_at')
     .andWhere('is_active', 1)
     .select('id');
 
@@ -126,7 +126,7 @@ export const listMenuCategories = async (req, res, next) => {
           .andOn(db.raw('mi.deleted_at is null'));
       })
       .where('mc.restaurant_id', restaurantId)
-      .andWhereNull('mc.deleted_at')
+      .whereNull('mc.deleted_at')
       .groupBy('mc.id')
       .select(
         'mc.id',
@@ -163,7 +163,7 @@ export const createMenuCategory = async (req, res, next) => {
     if (resolvedOrder === undefined) {
       const maxRow = await db('menu_categories')
         .where('restaurant_id', restaurantId)
-        .andWhereNull('deleted_at')
+        .whereNull('deleted_at')
         .max({ max_display_order: 'display_order' })
         .first();
       resolvedOrder = Number(maxRow?.max_display_order || 0) + 1;
@@ -203,7 +203,7 @@ export const updateMenuCategory = async (req, res, next) => {
 
     const updated = await db('menu_categories')
       .where({ id, restaurant_id: restaurantId })
-      .andWhereNull('deleted_at')
+      .whereNull('deleted_at')
       .update({
         ...(name !== undefined && { name }),
         ...(description !== undefined && { description }),
@@ -217,7 +217,7 @@ export const updateMenuCategory = async (req, res, next) => {
 
     const [category] = await db('menu_categories')
       .where({ id, restaurant_id: restaurantId })
-      .andWhereNull('deleted_at')
+      .whereNull('deleted_at')
       .select('id', 'name', 'description', 'image_url', 'display_order', 'is_active', 'created_at', 'updated_at')
       .limit(1);
 
@@ -237,7 +237,7 @@ export const reorderMenuCategories = async (req, res, next) => {
 
     const categories = await db('menu_categories')
       .where('restaurant_id', restaurantId)
-      .andWhereNull('deleted_at')
+      .whereNull('deleted_at')
       .select('id');
 
     const existingIds = new Set(categories.map((row) => row.id));
@@ -250,7 +250,7 @@ export const reorderMenuCategories = async (req, res, next) => {
       for (let index = 0; index < order.length; index += 1) {
         await trx('menu_categories')
           .where({ id: order[index], restaurant_id: restaurantId })
-          .andWhereNull('deleted_at')
+          .whereNull('deleted_at')
           .update({ display_order: index + 1, updated_at: now });
       }
     });
@@ -268,7 +268,7 @@ export const deleteMenuCategory = async (req, res, next) => {
 
     const [category] = await db('menu_categories')
       .where({ id, restaurant_id: restaurantId })
-      .andWhereNull('deleted_at')
+      .whereNull('deleted_at')
       .select('id')
       .limit(1);
 
@@ -281,8 +281,8 @@ export const deleteMenuCategory = async (req, res, next) => {
       .where('mic.restaurant_id', restaurantId)
       .andWhere('mic.category_id', id)
       .andWhere('mic.is_active', 1)
-      .andWhereNull('mic.deleted_at')
-      .andWhereNull('mi.deleted_at')
+      .whereNull('mic.deleted_at')
+      .whereNull('mi.deleted_at')
       .first('mic.id');
 
     if (mapped) {
@@ -291,7 +291,7 @@ export const deleteMenuCategory = async (req, res, next) => {
 
     await db('menu_categories')
       .where({ id, restaurant_id: restaurantId })
-      .andWhereNull('deleted_at')
+      .whereNull('deleted_at')
       .update({
         deleted_at: new Date(),
         is_active: 0,
@@ -321,7 +321,7 @@ export const listMenuItems = async (req, res, next) => {
 
     const base = db('menu_items as mi')
       .where('mi.restaurant_id', restaurantId)
-      .andWhereNull('mi.deleted_at');
+      .whereNull('mi.deleted_at');
 
     if (search) {
       base.andWhere((builder) => {
@@ -351,7 +351,7 @@ export const listMenuItems = async (req, res, next) => {
           .andWhere('mic.restaurant_id', restaurantId)
           .andWhere('mic.category_id', category_id)
           .andWhere('mic.is_active', 1)
-          .andWhereNull('mic.deleted_at'),
+          .whereNull('mic.deleted_at'),
       );
     }
 
@@ -522,7 +522,7 @@ export const updateMenuItem = async (req, res, next) => {
     await db.transaction(async (trx) => {
       const [existing] = await trx('menu_items')
         .where({ id, restaurant_id: restaurantId })
-        .andWhereNull('deleted_at')
+        .whereNull('deleted_at')
         .select('*')
         .limit(1);
 
@@ -558,7 +558,7 @@ export const updateMenuItem = async (req, res, next) => {
 
       await trx('menu_items')
         .where({ id, restaurant_id: restaurantId })
-        .andWhereNull('deleted_at')
+        .whereNull('deleted_at')
         .update(itemUpdate);
 
       if (category_ids !== undefined) {
@@ -631,7 +631,7 @@ export const updateMenuItem = async (req, res, next) => {
 
     const [item] = await db('menu_items')
       .where({ id, restaurant_id: restaurantId })
-      .andWhereNull('deleted_at')
+      .whereNull('deleted_at')
       .select('*')
       .limit(1);
 
@@ -660,7 +660,7 @@ export const setMenuItemAvailability = async (req, res, next) => {
 
     const [item] = await db('menu_items')
       .where({ id, restaurant_id: restaurantId })
-      .andWhereNull('deleted_at')
+      .whereNull('deleted_at')
       .select('id', 'is_available')
       .limit(1);
 
@@ -671,7 +671,7 @@ export const setMenuItemAvailability = async (req, res, next) => {
     await db.transaction(async (trx) => {
       await trx('menu_items')
         .where({ id, restaurant_id: restaurantId })
-        .andWhereNull('deleted_at')
+        .whereNull('deleted_at')
         .update({
           is_available: is_available ? 1 : 0,
           updated_at: new Date(),
@@ -714,7 +714,7 @@ export const deleteMenuItem = async (req, res, next) => {
     await db.transaction(async (trx) => {
       const [item] = await trx('menu_items')
         .where({ id, restaurant_id: restaurantId })
-        .andWhereNull('deleted_at')
+        .whereNull('deleted_at')
         .select('id', 'name')
         .limit(1);
 
@@ -728,7 +728,7 @@ export const deleteMenuItem = async (req, res, next) => {
 
       await trx('menu_items')
         .where({ id, restaurant_id: restaurantId })
-        .andWhereNull('deleted_at')
+        .whereNull('deleted_at')
         .update({
           deleted_at: now,
           updated_at: now,
@@ -736,7 +736,7 @@ export const deleteMenuItem = async (req, res, next) => {
 
       await trx('menu_item_categories')
         .where({ menu_item_id: id, restaurant_id: restaurantId })
-        .andWhereNull('deleted_at')
+        .whereNull('deleted_at')
         .update({
           is_active: 0,
           is_primary_category: 0,
@@ -784,7 +784,7 @@ export const listStaff = async (req, res, next) => {
 
     const query = db('staff as s')
       .where('s.restaurant_id', restaurantId)
-      .andWhereNull('s.deleted_at')
+      .whereNull('s.deleted_at')
       .select(
         's.id',
         's.name',
@@ -955,7 +955,7 @@ export const updateStaffAccess = async (req, res, next) => {
 
     const [target] = await db('staff')
       .where({ id, restaurant_id: restaurantId })
-      .andWhereNull('deleted_at')
+      .whereNull('deleted_at')
       .select('id', 'name', 'email', 'access')
       .limit(1);
 
@@ -966,7 +966,7 @@ export const updateStaffAccess = async (req, res, next) => {
     await db.transaction(async (trx) => {
       await trx('staff')
         .where({ id, restaurant_id: restaurantId })
-        .andWhereNull('deleted_at')
+        .whereNull('deleted_at')
         .update({
           access,
           updated_at: new Date(),
@@ -1004,7 +1004,7 @@ export const resendStaffCredentials = async (req, res, next) => {
 
     const [target] = await db('staff')
       .where({ id, restaurant_id: restaurantId })
-      .andWhereNull('deleted_at')
+      .whereNull('deleted_at')
       .select('id', 'name', 'email', 'role')
       .limit(1);
 
@@ -1022,7 +1022,7 @@ export const resendStaffCredentials = async (req, res, next) => {
 
     await db('staff')
       .where({ id, restaurant_id: restaurantId })
-      .andWhereNull('deleted_at')
+      .whereNull('deleted_at')
       .update({
         password_hash: passwordHash,
         updated_at: new Date(),
