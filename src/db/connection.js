@@ -57,7 +57,7 @@ export async function checkDbHealth() {
         ok: false,
         status: 'down',
         code: 'DB_HOST_UNRESOLVABLE',
-        message: `Database host \"${connection.host}\" could not be resolved. Check Railway environment variables for DATABASE_URL or DB_HOST.`,
+        message: `Database host \"${connection.host}\" could not be resolved.`,
         host: connection.host
       };
     }
@@ -88,7 +88,7 @@ export async function validateDbConnection() {
 const db = knex({
   client: 'mysql2',
   connection: buildConnectionConfig(),
-  pool: { min: 0, max: 10 }
+  pool: { min: 0, max: 10, acquireTimeoutMillis: 30000 }
 });
 
 export default db;

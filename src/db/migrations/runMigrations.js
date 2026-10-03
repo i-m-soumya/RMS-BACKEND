@@ -4,6 +4,17 @@ import { MIGRATION_ID as RESTAURANTS_COUNTRY_MANAGER_NAME_MIGRATION_ID, up as mi
 import { MIGRATION_ID as FLOORS_FLOOR_ORDER_MIGRATION_ID, up as migrateFloorsFloorOrder } from './005_floors_floor_order.js';
 import { MIGRATION_ID as TABLES_CAPACITY_MIGRATION_ID, up as migrateTablesCapacity } from './006_tables_capacity.js';
 import { MIGRATION_ID as TABLES_NAME_MIGRATION_ID, up as migrateTablesName } from './007_tables_name.js';
+import { MIGRATION_ID as STAFF_SESSIONS_MIGRATION_ID, up as migrateStaffSessions } from './008_staff_sessions.js';
+import { MIGRATION_ID as ADDON_MAP_REPOINT_MIGRATION_ID, up as migrateAddonMapRepoint } from './009_menu_item_addon_map_repoint_items.js';
+import { MIGRATION_ID as CUSTOMER_SELF_SERVICE_SESSIONS_MIGRATION_ID, up as migrateCustomerSelfServiceSessions } from './010_customer_self_service_sessions.js';
+import { MIGRATION_ID as ORDER_ITEM_ADDONS_REPOINT_ITEMS_MIGRATION_ID, up as migrateOrderItemAddonsRepointItems } from './012_order_item_addons_repoint_items.js';
+import { MIGRATION_ID as ORDER_ITEMS_SPICE_LEVEL_MIGRATION_ID, up as migrateOrderItemsSpiceLevel } from './011_order_items_spice_level.js';
+import { MIGRATION_ID as STAFF_LOGIN_LOCKOUT_MIGRATION_ID, up as migrateStaffLoginLockout } from './014_staff_login_lockout.js';
+import { MIGRATION_ID as STAFF_SESSION_REFRESH_HASH_MIGRATION_ID, up as migrateStaffSessionRefreshHash } from './015_staff_session_refresh_hash.js';
+import { MIGRATION_ID as NOTIFICATIONS_PIPELINE_MIGRATION_ID, up as migrateNotificationsPipeline } from './016_notifications_pipeline.js';
+import { MIGRATION_ID as MENU_ITEM_AVAILABILITY_REASON_MIGRATION_ID, up as migrateMenuItemAvailabilityReason } from './017_menu_item_availability_reason.js';
+import { MIGRATION_ID as MENU_ADDON_MAP_REFERENCE_MIGRATION_ID, up as migrateMenuAddonMapReference } from './018_menu_addon_map_reference.js';
+import { MIGRATION_ID as MENU_ADDON_MAP_REFERENCE_REPAIR_MIGRATION_ID, up as migrateMenuAddonMapReferenceRepair } from './019_menu_addon_map_reference_repair.js';
 
 async function ensureMigrationsTable() {
   const exists = await db.schema.hasTable('schema_migrations');
@@ -70,6 +81,17 @@ async function run() {
     await applyMigration(FLOORS_FLOOR_ORDER_MIGRATION_ID, migrateFloorsFloorOrder);
     await applyMigration(TABLES_CAPACITY_MIGRATION_ID, migrateTablesCapacity);
     await applyMigration(TABLES_NAME_MIGRATION_ID, migrateTablesName);
+    await applyMigration(STAFF_SESSIONS_MIGRATION_ID, migrateStaffSessions);
+    await applyMigration(ADDON_MAP_REPOINT_MIGRATION_ID, migrateAddonMapRepoint);
+    await applyMigration(CUSTOMER_SELF_SERVICE_SESSIONS_MIGRATION_ID, migrateCustomerSelfServiceSessions);
+    await applyMigration(ORDER_ITEM_ADDONS_REPOINT_ITEMS_MIGRATION_ID, migrateOrderItemAddonsRepointItems);
+    await applyMigration(ORDER_ITEMS_SPICE_LEVEL_MIGRATION_ID, migrateOrderItemsSpiceLevel);
+    await applyMigration(STAFF_LOGIN_LOCKOUT_MIGRATION_ID, migrateStaffLoginLockout);
+    await applyMigration(STAFF_SESSION_REFRESH_HASH_MIGRATION_ID, migrateStaffSessionRefreshHash);
+    await applyMigration(NOTIFICATIONS_PIPELINE_MIGRATION_ID, migrateNotificationsPipeline);
+    await applyMigration(MENU_ITEM_AVAILABILITY_REASON_MIGRATION_ID, migrateMenuItemAvailabilityReason);
+    await applyMigration(MENU_ADDON_MAP_REFERENCE_MIGRATION_ID, migrateMenuAddonMapReference);
+    await applyMigration(MENU_ADDON_MAP_REFERENCE_REPAIR_MIGRATION_ID, migrateMenuAddonMapReferenceRepair);
 
     console.log('Migrations complete.');
     process.exit(0);

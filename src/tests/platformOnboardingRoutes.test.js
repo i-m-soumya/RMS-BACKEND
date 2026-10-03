@@ -26,6 +26,13 @@ function buildApp() {
     downloadRestaurantQrBatchZip: (req, res) => res.status(200).send('zip-content'),
     downloadTableQrCode: (req, res) => res.status(200).send('png-content'),
     createRestaurantAdminCredentials: (req, res) => res.status(201).json({ ok: true, route: 'create-admin' }),
+    getRestaurantDetails: (req, res) => res.json({ ok: true, route: 'details' }),
+    updateRestaurant: (req, res) => res.json({ ok: true, route: 'update' }),
+    updateRestaurantBranding: (req, res) => res.json({ ok: true, route: 'branding' }),
+    updateRestaurantGst: (req, res) => res.json({ ok: true, route: 'gst' }),
+    resendRestaurantAdminCredentials: (req, res) => res.json({ data: { email: 'admin@cafe-one.in', role: 'restaurant_admin' } }),
+    suspendRestaurant: (req, res) => res.json({ ok: true, route: 'suspend' }),
+    reactivateRestaurant: (req, res) => res.json({ ok: true, route: 'reactivate' }),
   };
 
   app.use('/api/platform', createPlatformRouter({ authenticateToken: authMiddleware, handlers }));
@@ -64,14 +71,21 @@ test('platform onboarding routes deny non-platform roles (RBAC)', async () => {
 
   const cases = [
     { method: 'get', path: '/api/platform/restaurants' },
+    { method: 'get', path: '/api/platform/restaurants/restaurant-1' },
     { method: 'post', path: '/api/platform/restaurants', body: validBasicDetailsBody },
     { method: 'patch', path: '/api/platform/restaurants/restaurant-1/basic-details', body: { city: 'Mumbai' } },
+    { method: 'patch', path: '/api/platform/restaurants/restaurant-1', body: { city: 'Mumbai' } },
+    { method: 'patch', path: '/api/platform/restaurants/restaurant-1/branding', body: { welcomeMessage: 'Welcome' } },
+    { method: 'patch', path: '/api/platform/restaurants/restaurant-1/gst', body: { gstEnabled: false } },
     { method: 'put', path: '/api/platform/restaurants/restaurant-1/floors-and-tables', body: validFloorsBody },
     { method: 'post', path: '/api/platform/restaurants/restaurant-1/qr-codes/generate' },
     { method: 'get', path: '/api/platform/restaurants/restaurant-1/qr-codes/batch' },
     { method: 'get', path: '/api/platform/restaurants/restaurant-1/qr-codes/batch-download' },
     { method: 'get', path: '/api/platform/tables/table-1/qr' },
     { method: 'post', path: '/api/platform/restaurants/restaurant-1/admin-credentials', body: validAdminCredentialsBody },
+    { method: 'post', path: '/api/platform/restaurants/restaurant-1/admin-credentials/resend' },
+    { method: 'post', path: '/api/platform/restaurants/restaurant-1/suspend' },
+    { method: 'post', path: '/api/platform/restaurants/restaurant-1/reactivate' },
   ];
 
   for (const entry of cases) {
@@ -115,6 +129,16 @@ test('platform onboarding routes allow platform_admin role', async () => {
     .set('x-test-role', 'platform_admin')
     .send(validAdminCredentialsBody);
   assert.equal(responseAdmin.status, 201);
+
+  const responseSuspend = await request(app)
+    .post('/api/platform/restaurants/restaurant-1/suspend')
+    .set('x-test-role', 'platform_admin');
+  assert.equal(responseSuspend.status, 200);
+
+  const responseReactivate = await request(app)
+    .post('/api/platform/restaurants/restaurant-1/reactivate')
+    .set('x-test-role', 'platform_admin');
+  assert.equal(responseReactivate.status, 200);
 });
 
 test('platform onboarding routes validate request payloads', async () => {
@@ -132,4 +156,17 @@ test('platform onboarding routes validate request payloads', async () => {
 
   assert.equal(response.status, 422);
   assert.equal(response.body.code, 'VALIDATION_ERROR');
+});
+
+test('general restaurant edit rejects immutable slug and table_count fields', async () => {
+  const app = buildApp();
+
+  for (const body of [{ slug: 'new-slug' }, { table_count: 99 }]) {
+    const response = await request(app)
+      .patch('/api/platform/restaurants/restaurant-1')
+      .set('x-test-role', 'platform_admin')
+      .send(body);
+    assert.equal(response.status, 422);
+    assert.equal(response.body.code, 'VALIDATION_ERROR');
+  }
 });

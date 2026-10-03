@@ -1,20 +1,72 @@
 import bcrypt from 'bcrypt';
+import { randomUUID } from 'crypto';
 import db from '../../db/connection.js';
-import { signToken, signRefreshToken } from '../../services/jwt.js';
+import { signToken, signRefreshToken, verifyToken } from '../../services/jwt.js';
+import {
+  createStaffSession,
+  rotateStaffSessionToken,
+  logoutStaffSession,
+  logoutStaffSessionByRefreshToken,
+  findActiveStaffSessionByRefreshToken,
+} from '../../services/staffSessions.js';
+import {
+  MAX_FAILED_LOGINS,
+  isStaffLocked,
+  recordFailedLogin,
+  resetFailedLoginAttempts,
+} from '../../services/staffLoginSecurity.js';
+
+function permissionsForStaffRole(role) {
+  if (role === 'restaurant_admin') {
+    return ['menu:read', 'menu:write', 'order:read', 'order:update', 'session:read', 'session:write', 'staff:read', 'staff:write'];
+  }
+  if (role === 'waiter') {
+    return ['menu:read', 'order:read', 'order:update', 'session:read', 'session:write'];
+  }
+  return ['menu:read', 'order:read', 'order:update'];
+}
+
+async function issueStaffSession(staff, req) {
+  const sessionId = randomUUID();
+  const userPayload = {
+    id: staff.id,
+    name: staff.name,
+    email: staff.email,
+    role: staff.role,
+    restaurantId: staff.restaurant_id,
+    restaurantSlug: staff.restaurant_slug,
+    permissions: permissionsForStaffRole(staff.role),
+    staffSessionId: sessionId,
+  };
+  const token = signToken(userPayload);
+  const refreshToken = signRefreshToken(userPayload);
+  await db('staff').where({ id: staff.id }).update({ last_login_at: new Date() });
+  await createStaffSession({ staffId: staff.id, token, refreshToken, req, sessionId });
+  return { token, refreshToken, user: userPayload };
+}
+
+function buildFailedLoginPayload(failureState, message = 'Invalid email or password') {
+  return {
+    error: message,
+    code: failureState.isLocked ? 'ACCOUNT_LOCKED' : 'INVALID_CREDENTIALS',
+    failedAttempts: failureState.failedAttempts,
+    remainingAttempts: failureState.remainingAttempts,
+    ...(failureState.warning ? { warning: failureState.warning } : {}),
+    ...(failureState.lockoutUntil ? { lockoutUntil: failureState.lockoutUntil.toISOString() } : {}),
+  };
+}
 
 export const customerLogin = async (req, res, next) => {
   try {
     const { email, password } = req.body;
-    
-    // Check customers table
     const [customer] = await db('customers').where({ email }).limit(1);
-    
+
     if (!customer || !customer.password_hash) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
     const isValid = await bcrypt.compare(password, customer.password_hash);
-    
+
     if (!isValid) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
@@ -49,9 +101,6 @@ export const customerRegister = async (req, res, next) => {
     }
 
     const password_hash = await bcrypt.hash(password, 10);
-    
-    // Generate UUID if DB doesn't (we removed DEFAULT UUID from the schema)
-    // Actually we need `uuid` package. We installed it previously.
     const { v4: uuidv4 } = await import('uuid');
     const newId = uuidv4();
 
@@ -88,41 +137,44 @@ export const staffLogin = async (req, res, next) => {
       .where('staff.email', email)
       .andWhere('staff.deleted_at', null)
       .join('restaurants', 'staff.restaurant_id', 'restaurants.id')
-      .select('staff.*', 'restaurants.slug as restaurant_slug')
+      .select('staff.*', 'restaurants.slug as restaurant_slug', 'restaurants.status as restaurant_status')
       .limit(1);
 
-    if (!staff || staff.access === 'revoked') {
+    if (!staff) {
       return res.status(401).json({ error: 'Invalid email or password' });
+    }
+    if (staff.access === 'revoked') {
+      return res.status(403).json({ error: 'This staff account is not available for login', code: 'ACCOUNT_REVOKED' });
+    }
+
+    if (await isStaffLocked(staff.id)) {
+      return res.status(423).json({
+        error: 'This account has been temporarily locked due to multiple failed login attempts.',
+        code: 'ACCOUNT_LOCKED',
+        failedAttempts: MAX_FAILED_LOGINS,
+        remainingAttempts: 0,
+      });
     }
 
     const isValid = await bcrypt.compare(password, staff.password_hash);
     if (!isValid) {
-      return res.status(401).json({ error: 'Invalid email or password' });
+      const failureState = await recordFailedLogin(staff.id);
+      if (failureState.isLocked) {
+        return res.status(423).json(buildFailedLoginPayload({
+          ...failureState,
+          isLocked: true,
+        }, 'This account has been temporarily locked due to multiple failed login attempts.'));
+      }
+
+      return res.status(401).json(buildFailedLoginPayload(failureState));
     }
 
-    const permissions = [];
-    if (staff.role === 'restaurant_admin') {
-      permissions.push('menu:read', 'menu:write', 'order:read', 'order:update', 'session:read', 'session:write', 'staff:read', 'staff:write');
-    } else if (staff.role === 'waiter') {
-      permissions.push('menu:read', 'order:read', 'order:update', 'session:read', 'session:write');
-    } else if (staff.role === 'chef') {
-      permissions.push('menu:read', 'order:read', 'order:update');
+    await resetFailedLoginAttempts(staff.id);
+    if (staff.restaurant_status === 'suspended') {
+      return res.status(403).json({ error: 'Restaurant access is suspended', code: 'RESTAURANT_SUSPENDED', reason: 'restaurant_suspended' });
     }
 
-    const userPayload = {
-      id: staff.id,
-      name: staff.name,
-      email: staff.email,
-      role: staff.role,
-      restaurantId: staff.restaurant_id,
-      restaurantSlug: staff.restaurant_slug,
-      permissions
-    };
-
-    const token = signToken(userPayload);
-    const refreshToken = signRefreshToken(userPayload);
-
-    res.json({ token, refreshToken, user: userPayload });
+    res.json(await issueStaffSession(staff, req));
   } catch (error) {
     next(error);
   }
@@ -164,44 +216,48 @@ export const consoleLogin = async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
-    // Try staff login first
     const [staff] = await db('staff')
       .where('staff.email', email)
       .andWhere('staff.deleted_at', null)
       .join('restaurants', 'staff.restaurant_id', 'restaurants.id')
-      .select('staff.*', 'restaurants.slug as restaurant_slug')
+      .select('staff.*', 'restaurants.slug as restaurant_slug', 'restaurants.status as restaurant_status')
       .limit(1);
 
-    if (staff && staff.access !== 'revoked') {
-      const isValid = await bcrypt.compare(password, staff.password_hash);
-      if (isValid) {
-        const permissions = [];
-        if (staff.role === 'restaurant_admin') {
-          permissions.push('menu:read', 'menu:write', 'order:read', 'order:update', 'session:read', 'session:write', 'staff:read', 'staff:write');
-        } else if (staff.role === 'waiter') {
-          permissions.push('menu:read', 'order:read', 'order:update', 'session:read', 'session:write');
-        } else if (staff.role === 'chef') {
-          permissions.push('menu:read', 'order:read', 'order:update');
-        }
-
-        const userPayload = {
-          id: staff.id,
-          name: staff.name,
-          email: staff.email,
-          role: staff.role,
-          restaurantId: staff.restaurant_id,
-          restaurantSlug: staff.restaurant_slug,
-          permissions
-        };
-
-        const token = signToken(userPayload);
-        const refreshToken = signRefreshToken(userPayload);
-
-        return res.json({ token, refreshToken, user: userPayload });
-      }
+    if (staff && staff.access === 'revoked') {
+      return res.status(403).json({ error: 'This staff account is not available for login', code: 'ACCOUNT_REVOKED', reason: 'account_revoked' });
     }
 
-    // Try platform admin login
+    if (staff) {
+      if (await isStaffLocked(staff.id)) {
+        return res.status(423).json({
+          error: 'This account has been temporarily locked due to multiple failed login attempts.',
+          code: 'ACCOUNT_LOCKED',
+          failedAttempts: MAX_FAILED_LOGINS,
+          remainingAttempts: 0,
+          reason: 'account_locked',
+        });
+      }
+
+      const isValid = await bcrypt.compare(password, staff.password_hash);
+      if (isValid) {
+        await resetFailedLoginAttempts(staff.id);
+        if (staff.restaurant_status === 'suspended') {
+          return res.status(403).json({ error: 'Restaurant access is suspended', code: 'RESTAURANT_SUSPENDED', reason: 'restaurant_suspended' });
+        }
+        return res.json(await issueStaffSession(staff, req));
+      }
+
+      const failureState = await recordFailedLogin(staff.id);
+      if (failureState.isLocked) {
+        return res.status(423).json(buildFailedLoginPayload({
+          ...failureState,
+          isLocked: true,
+        }, 'This account has been temporarily locked due to multiple failed login attempts.'));
+      }
+
+      return res.status(401).json(buildFailedLoginPayload(failureState));
+    }
+
     const [admin] = await db('platform_admins').where('email', email).limit(1);
 
     if (admin && admin.is_active) {
@@ -222,8 +278,7 @@ export const consoleLogin = async (req, res, next) => {
       }
     }
 
-    // No valid user found
-    return res.status(401).json({ error: 'Invalid email or password' });
+    return res.status(401).json({ error: 'Invalid email or password', code: 'INVALID_CREDENTIALS', failedAttempts: 0, remainingAttempts: MAX_FAILED_LOGINS });
   } catch (error) {
     next(error);
   }
@@ -233,12 +288,10 @@ export const refreshToken = async (req, res, next) => {
   try {
     const { refreshToken: token } = req.body;
 
-    if (!token) return res.status(401).json({ error: 'No token' });
+    if (!token) return res.status(401).json({ error: 'No token', reason: 'session_expired' });
 
-    const { verifyToken } = await import('../../services/jwt.js');
     try {
       const decoded = verifyToken(token);
-      
       const payload = {
         id: decoded.id,
         name: decoded.name,
@@ -246,15 +299,44 @@ export const refreshToken = async (req, res, next) => {
         role: decoded.role,
         permissions: decoded.permissions,
         restaurantId: decoded.restaurantId,
-        restaurantSlug: decoded.restaurantSlug
+        restaurantSlug: decoded.restaurantSlug,
+        staffSessionId: decoded.staffSessionId,
       };
-      
+
       const newToken = signToken(payload);
       const newRefreshToken = signRefreshToken(payload);
+
+      if (['restaurant_admin', 'waiter', 'chef'].includes(decoded.role)) {
+        const session = await findActiveStaffSessionByRefreshToken(token);
+        if (!decoded.staffSessionId || !session || !(await rotateStaffSessionToken(decoded.staffSessionId, newToken, newRefreshToken))) {
+          return res.status(401).json({ error: 'Staff session is expired or no longer active', reason: 'session_expired' });
+        }
+      }
+
       res.json({ token: newToken, refreshToken: newRefreshToken, user: payload });
     } catch (e) {
-      res.status(403).json({ error: 'Invalid refresh token' });
+      res.status(401).json({ error: 'Invalid refresh token', reason: 'session_expired' });
     }
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const logout = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    const refreshTokenFromBody = req.body?.refreshToken || req.headers['x-refresh-token'];
+
+    if (token && req.user?.role && ['restaurant_admin', 'waiter', 'chef'].includes(req.user.role)) {
+      await logoutStaffSession(token);
+    }
+
+    if (refreshTokenFromBody && req.user?.role && ['restaurant_admin', 'waiter', 'chef'].includes(req.user.role)) {
+      await logoutStaffSessionByRefreshToken(refreshTokenFromBody);
+    }
+
+    res.status(204).send();
   } catch (error) {
     next(error);
   }

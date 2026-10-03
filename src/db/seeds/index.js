@@ -7,32 +7,53 @@ async function seed() {
     console.log('Seeding data...');
 
     // Clean up in FK-safe order
+    await db('bill_line_item_addons').del();
+    await db('bill_line_items').del();
+    await db('bill_orders').del();
     await db('ratings').del();
     await db('bills').del();
+    await db('staff_activity_log').del();
+    await db('order_item_addons').del();
     await db('order_items').del();
     await db('orders').del();
+    await db('menu_item_availability_log').del();
+    await db('menu_item_images').del();
+    await db('menu_item_schedules').del();
+    await db('menu_item_pairings').del();
+    await db('session_members').del();
     await db('customer_guest_tokens').del();
     await db('sessions').del();
+    await db('invoice_sequences').del();
+    await db('restaurant_tax_config').del();
+    await db('staff_sessions').del();
     await db('tables').del();
     await db('floors').del();
     await db('restaurant_holidays').del();
     await db('operating_hours').del();
+    await db('menu_item_addon_map').del();
     await db('menu_item_categories').del();
     await db('menu_items').del();
     await db('menu_categories').del();
+    const existingPlatformAdmin = await db('platform_admins').select('id').first();
+    if (existingPlatformAdmin) {
+      await db('staff').update({ created_by_staff_id: null, created_by_platform_admin_id: existingPlatformAdmin.id });
+    }
     await db('staff').del();
     await db('customers').del();
     await db('restaurants').del();
     await db('platform_admins').del();
 
-    const testPasswordHash = await bcrypt.hash('password123', 10);
+    const platformPasswordHash = await bcrypt.hash('Admin123!', 10);
+    const adminPasswordHash = await bcrypt.hash('Admin123!', 10);
+    const waiterPasswordHash = await bcrypt.hash('Waiter123!', 10);
+    const chefPasswordHash = await bcrypt.hash('Chef123!', 10);
 
     const adminId = uuidv4();
     await db('platform_admins').insert({
       id: adminId,
       name: 'Platform Admin',
       email: 'platform@example.com',
-      password_hash: testPasswordHash,
+      password_hash: platformPasswordHash,
       is_active: 1
     });
 
@@ -62,7 +83,7 @@ async function seed() {
         restaurant_id: restaurantId,
         name: 'Restaurant Admin',
         email: 'admin@burger-co.local',
-        password_hash: testPasswordHash,
+        password_hash: adminPasswordHash,
         role: 'restaurant_admin',
         access: 'active',
         created_by_platform_admin_id: adminId
@@ -72,7 +93,7 @@ async function seed() {
         restaurant_id: restaurantId,
         name: 'Waiter',
         email: 'waiter@burger-co.local',
-        password_hash: testPasswordHash,
+        password_hash: waiterPasswordHash,
         role: 'waiter',
         access: 'active',
         created_by_platform_admin_id: adminId
@@ -82,7 +103,7 @@ async function seed() {
         restaurant_id: restaurantId,
         name: 'Chef',
         email: 'chef@burger-co.local',
-        password_hash: testPasswordHash,
+        password_hash: chefPasswordHash,
         role: 'chef',
         access: 'active',
         created_by_platform_admin_id: adminId
@@ -94,97 +115,215 @@ async function seed() {
       id: customerId,
       name: 'Test Customer',
       email: 'customer@example.com',
-      password_hash: testPasswordHash,
+      password_hash: await bcrypt.hash('password123', 10),
       is_registered: 1
     });
 
-    const floorId = uuidv4();
-    await db('floors').insert({
-      id: floorId,
+    const floors = [
+      { id: uuidv4(), name: 'Main Dining', display_order: 1 },
+      { id: uuidv4(), name: 'Patio', display_order: 2 },
+      { id: uuidv4(), name: 'Private Dining', display_order: 3 },
+    ];
+    await db('floors').insert(floors.map((floor) => ({
+      ...floor,
       restaurant_id: restaurantId,
-      name: 'Main Dining',
-      display_order: 1,
-      is_active: 1
-    });
+      is_active: 1,
+    })));
 
-    const tableId = uuidv4();
-    await db('tables').insert({
-      id: tableId,
+    const tableDefinitions = [
+      ...['1', '2', '3', '4', '5', '6'].map((tableNumber) => ({ tableNumber, floorId: floors[0].id, seatingCapacity: 4 })),
+      ...['7', '8', '9', '10'].map((tableNumber) => ({ tableNumber, floorId: floors[1].id, seatingCapacity: 2 })),
+      ...['11', '12'].map((tableNumber) => ({ tableNumber, floorId: floors[2].id, seatingCapacity: 6 })),
+    ];
+    await db('tables').insert(tableDefinitions.map(({ tableNumber, floorId, seatingCapacity }) => ({
+      id: uuidv4(),
       restaurant_id: restaurantId,
       floor_id: floorId,
-      table_number: '1',
-      seating_capacity: 4,
+      table_number: tableNumber,
+      capacity: seatingCapacity,
+      seating_capacity: seatingCapacity,
       status: 'available',
-      is_active: 1
-    });
+      is_active: 1,
+    })));
 
-    const catStartersId = uuidv4();
-    const catMainsId = uuidv4();
+    const catBurgersId = uuidv4();
+    const catSidesId = uuidv4();
+    const catDrinksId = uuidv4();
     await db('menu_categories').insert([
       {
-        id: catStartersId,
+        id: catBurgersId,
         restaurant_id: restaurantId,
-        name: 'Starters',
+        name: 'Burgers',
         display_order: 1,
         is_active: 1
       },
       {
-        id: catMainsId,
+        id: catSidesId,
         restaurant_id: restaurantId,
-        name: 'Main Course',
+        name: 'Sides',
         display_order: 2,
+        is_active: 1
+      },
+      {
+        id: catDrinksId,
+        restaurant_id: restaurantId,
+        name: 'Drinks',
+        display_order: 3,
         is_active: 1
       }
     ]);
 
-    const item1Id = uuidv4();
-    const item2Id = uuidv4();
+    const classicBurgerId = uuidv4();
+    const crispyChickenBurgerId = uuidv4();
+    const veggieStackId = uuidv4();
+    const loadedFriesId = uuidv4();
+    const onionRingsId = uuidv4();
+    const chocolateShakeId = uuidv4();
+    const addonCheeseId = uuidv4();
+    const addonBaconId = uuidv4();
+    const addonJalapenosId = uuidv4();
     await db('menu_items').insert([
       {
-        id: item1Id,
+        id: classicBurgerId,
         restaurant_id: restaurantId,
-        name: 'Paneer Tikka',
-        description: 'Cottage cheese marinated in spices and grilled',
-        mrp: 250.00,
-        price: 250.00,
+        name: 'Classic Smash Burger',
+        description: 'Two smashed beef patties, American cheese, pickles, onions, and house sauce on a toasted brioche bun.',
+        mrp: 349.00,
+        price: 299.00,
+        item_type: 'regular',
+        dietary_type: 'non_veg',
+        spice_level: 'medium',
+        is_available: 1
+      },
+      {
+        id: crispyChickenBurgerId,
+        restaurant_id: restaurantId,
+        name: 'Crispy Chicken Burger',
+        description: 'Crispy fried chicken, lettuce, crunchy slaw, and chipotle mayo in a toasted brioche bun.',
+        mrp: 379.00,
+        price: 329.00,
+        item_type: 'regular',
+        dietary_type: 'non_veg',
+        spice_level: 'hot',
+        is_available: 1
+      },
+      {
+        id: veggieStackId,
+        restaurant_id: restaurantId,
+        name: 'Veggie Stack Burger',
+        description: 'Crispy vegetable patty, cheddar, lettuce, tomato, and roasted garlic mayo on a sesame bun.',
+        mrp: 299.00,
+        price: 249.00,
+        item_type: 'regular',
+        dietary_type: 'veg',
+        spice_level: 'mild',
+        is_available: 1
+      },
+      {
+        id: loadedFriesId,
+        restaurant_id: restaurantId,
+        name: 'Loaded Cheese Fries',
+        description: 'Crispy seasoned fries covered with warm cheese sauce and spring onions.',
+        mrp: 199.00,
+        price: 169.00,
         item_type: 'regular',
         dietary_type: 'veg',
         is_available: 1
       },
       {
-        id: item2Id,
+        id: onionRingsId,
         restaurant_id: restaurantId,
-        name: 'Butter Chicken',
-        description: 'Classic rich tomato gravy with chicken',
-        mrp: 450.00,
-        price: 450.00,
+        name: 'Beer-Battered Onion Rings',
+        description: 'Golden onion rings served with our smoky barbecue dip.',
+        mrp: 179.00,
+        price: 149.00,
         item_type: 'regular',
+        dietary_type: 'veg',
+        is_available: 1
+      },
+      {
+        id: chocolateShakeId,
+        restaurant_id: restaurantId,
+        name: 'Chocolate Thick Shake',
+        description: 'Creamy chocolate shake blended with vanilla ice cream and finished with chocolate drizzle.',
+        mrp: 229.00,
+        price: 199.00,
+        item_type: 'regular',
+        dietary_type: 'veg',
+        is_available: 1
+      },
+      {
+        id: addonCheeseId,
+        restaurant_id: restaurantId,
+        name: 'Extra Cheese Slice',
+        description: 'A melted American cheese slice added to your burger.',
+        mrp: 40.00,
+        price: 40.00,
+        item_type: 'addon_only',
+        dietary_type: 'veg',
+        is_available: 1
+      },
+      {
+        id: addonBaconId,
+        restaurant_id: restaurantId,
+        name: 'Crispy Bacon',
+        description: 'Smoky, crispy bacon strips for an extra savoury bite.',
+        mrp: 70.00,
+        price: 60.00,
+        item_type: 'addon_only',
         dietary_type: 'non_veg',
+        is_available: 1
+      },
+      {
+        id: addonJalapenosId,
+        restaurant_id: restaurantId,
+        name: 'Jalapenos',
+        description: 'Sliced pickled jalapenos for extra heat.',
+        mrp: 30.00,
+        price: 25.00,
+        item_type: 'addon_only',
+        dietary_type: 'veg',
         is_available: 1
       }
     ]);
 
-    const map1Id = uuidv4();
-    const map2Id = uuidv4();
+    const categoryMappings = [
+      [classicBurgerId, catBurgersId, 1],
+      [crispyChickenBurgerId, catBurgersId, 2],
+      [veggieStackId, catBurgersId, 3],
+      [loadedFriesId, catSidesId, 1],
+      [onionRingsId, catSidesId, 2],
+      [chocolateShakeId, catDrinksId, 1],
+    ];
     await db('menu_item_categories').insert([
-      {
-        id: map1Id,
-        menu_item_id: item1Id,
-        category_id: catStartersId,
+      ...categoryMappings.map(([menuItemId, categoryId, displayOrder]) => ({
+        id: uuidv4(),
+        menu_item_id: menuItemId,
+        category_id: categoryId,
         restaurant_id: restaurantId,
-        display_order: 1,
+        display_order: displayOrder,
         is_primary_category: 1,
         is_active: 1
-      },
-      {
-        id: map2Id,
-        menu_item_id: item2Id,
-        category_id: catMainsId,
+      }))
+    ]);
+
+    await db('menu_item_addon_map').insert([
+      ...[
+        [classicBurgerId, addonCheeseId],
+        [classicBurgerId, addonBaconId],
+        [classicBurgerId, addonJalapenosId],
+        [crispyChickenBurgerId, addonCheeseId],
+        [crispyChickenBurgerId, addonBaconId],
+        [crispyChickenBurgerId, addonJalapenosId],
+        [veggieStackId, addonCheeseId],
+        [veggieStackId, addonJalapenosId],
+        [loadedFriesId, addonCheeseId],
+      ].map(([menuItemId, addonId]) => ({
+        id: uuidv4(),
+        menu_item_id: menuItemId,
+        addon_id: addonId,
         restaurant_id: restaurantId,
-        display_order: 2,
-        is_primary_category: 1,
-        is_active: 1
-      }
+      }))
     ]);
 
     console.log('Seeding completed successfully!');

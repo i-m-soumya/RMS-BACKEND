@@ -112,6 +112,50 @@ export const listRestaurants = async (req, res, next) => {
   }
 };
 
+export const getRestaurantDetails = async (req, res, next) => {
+  try {
+    const [restaurant] = await db('restaurants').where({ id: req.params.restaurantId }).limit(1);
+    if (!restaurant) return res.status(404).json({ error: 'Restaurant not found' });
+    return res.json({ data: restaurant });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+async function updateRestaurantFields(req, res, next, fields) {
+  try {
+    const [restaurant] = await db('restaurants').where({ id: req.params.restaurantId }).limit(1);
+    if (!restaurant) return res.status(404).json({ error: 'Restaurant not found' });
+    const updates = Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined));
+    await db('restaurants').where({ id: req.params.restaurantId }).update(updates);
+    return res.json({ data: { id: req.params.restaurantId, ...updates } });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+export const updateRestaurant = (req, res, next) => updateRestaurantFields(req, res, next, {
+  name: req.body.name,
+  address: req.body.address,
+  city: req.body.city,
+  state: req.body.state,
+  pincode: req.body.pincode,
+  timezone: req.body.timezone,
+  contact_email: req.body.contactEmail,
+});
+
+export const updateRestaurantBranding = (req, res, next) => updateRestaurantFields(req, res, next, {
+  logo_url: req.body.logoUrl,
+  welcome_message: req.body.welcomeMessage,
+});
+
+export const updateRestaurantGst = (req, res, next) => updateRestaurantFields(req, res, next, {
+  gst_enabled: req.body.gstEnabled ? 1 : 0,
+  gst_number: req.body.gstNumber,
+  legal_name: req.body.legalName,
+  address: req.body.address,
+});
+
 export const createRestaurantBasicDetails = async (req, res, next) => {
   try {
     const payload = req.body;
@@ -205,6 +249,25 @@ export const updateRestaurantBasicDetails = async (req, res, next) => {
     next(error);
   }
 };
+
+async function setRestaurantStatus(req, res, next, status) {
+  try {
+    const { restaurantId } = req.params;
+    const [restaurant] = await db('restaurants').where({ id: restaurantId }).limit(1);
+    if (!restaurant) {
+      return res.status(404).json({ error: 'Restaurant not found' });
+    }
+
+    await db('restaurants').where({ id: restaurantId }).update({ status });
+    return res.json({ data: { id: restaurantId, status } });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+export const suspendRestaurant = (req, res, next) => setRestaurantStatus(req, res, next, 'suspended');
+
+export const reactivateRestaurant = (req, res, next) => setRestaurantStatus(req, res, next, 'active');
 
 export const saveFloorsAndTables = async (req, res, next) => {
   try {
@@ -522,5 +585,22 @@ export const createRestaurantAdminCredentials = async (req, res, next) => {
       return res.status(409).json({ error: 'Staff account already exists' });
     }
     next(error);
+  }
+};
+
+export const resendRestaurantAdminCredentials = async (req, res, next) => {
+  try {
+    const [restaurant] = await db('restaurants').where({ id: req.params.restaurantId }).limit(1);
+    const [admin] = await db('staff')
+      .where({ restaurant_id: req.params.restaurantId, role: 'restaurant_admin' })
+      .andWhere('access', 'active').andWhere('deleted_at', null).orderBy('created_at', 'asc').limit(1);
+    if (!restaurant || !admin) return res.status(404).json({ error: !restaurant ? 'Restaurant not found' : 'Restaurant admin not found' });
+
+    const tempPassword = makeTempPassword();
+    await db('staff').where({ id: admin.id }).update({ password_hash: await bcrypt.hash(tempPassword, 10) });
+    const sent = await sendAdminCredentialsEmail({ to: admin.email, adminName: admin.name, restaurantName: restaurant.name, tempPassword });
+    return res.json({ data: { staffId: admin.id, email: admin.email, role: admin.role, emailDelivery: sent } });
+  } catch (error) {
+    return next(error);
   }
 };

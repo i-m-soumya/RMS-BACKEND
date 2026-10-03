@@ -5,8 +5,10 @@ import {
   staffLogin, 
   platformAdminLogin,
   consoleLogin,
-  refreshToken
+  refreshToken,
+  logout
 } from '../controllers/authController.js';
+import { authenticateToken } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { authLimiter } from '../middleware/rateLimit.js';
 import {
@@ -24,5 +26,6 @@ router.post('/staff-login', authLimiter, validate(staffLoginSchema), staffLogin)
 router.post('/platform-admin-login', authLimiter, validate(staffLoginSchema), platformAdminLogin);
 router.post('/console-login', authLimiter, validate(staffLoginSchema), consoleLogin);
 router.post('/refresh', authLimiter, validate(refreshSchema), refreshToken);
+router.post('/logout', authenticateToken, logout);
 
 export default router;

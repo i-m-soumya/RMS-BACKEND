@@ -7,8 +7,8 @@ import { billSessionParamSchema, createBillSchema } from '../validators/bills.js
 
 const router = express.Router();
 
-// Protected read endpoint for viewing bills
-router.get('/session/:sessionId', authenticateToken, validate(billSessionParamSchema, 'params'), getBillBySession);
+// Customers need to view their active table bill without staff authentication.
+router.get('/session/:sessionId', validate(billSessionParamSchema, 'params'), getBillBySession);
 
 // Protected write endpoints for staff/admin
 router.post('/', authenticateToken, requireRoles(['waiter', 'restaurant_admin']), validate(createBillSchema), createBill);

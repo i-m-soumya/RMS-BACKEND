@@ -262,6 +262,22 @@ BEGIN
     CONSTRAINT fk_menu_item_categories_restaurant FOREIGN KEY (restaurant_id) REFERENCES restaurants(id) ON DELETE CASCADE
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+  CREATE TABLE menu_item_images (
+    id CHAR(36) NOT NULL,
+    menu_item_id CHAR(36) NOT NULL,
+    restaurant_id CHAR(36) NOT NULL,
+    image_url VARCHAR(500) NOT NULL,
+    display_order SMALLINT NOT NULL DEFAULT 0,
+    is_primary TINYINT(1) NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at DATETIME NULL,
+    PRIMARY KEY (id),
+    KEY idx_menu_item_images_item (menu_item_id, display_order, deleted_at),
+    KEY idx_menu_item_images_restaurant (restaurant_id, deleted_at),
+    CONSTRAINT fk_menu_item_images_item FOREIGN KEY (menu_item_id) REFERENCES menu_items(id),
+    CONSTRAINT fk_menu_item_images_restaurant FOREIGN KEY (restaurant_id) REFERENCES restaurants(id)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
   CREATE TABLE orders (
     id CHAR(36) NOT NULL DEFAULT (UUID()),
     session_id CHAR(36) NOT NULL,
@@ -287,12 +303,43 @@ BEGIN
     quantity INT NOT NULL,
     status ENUM('pending', 'preparing', 'ready', 'served', 'rejected') NOT NULL DEFAULT 'pending',
     notes TEXT NULL,
+    preparing_by_staff_id CHAR(36) NULL,
+    ready_by_staff_id CHAR(36) NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     KEY idx_order_items_order (order_id),
+    KEY fk_order_items_preparing_by (preparing_by_staff_id),
+    KEY fk_order_items_ready_by (ready_by_staff_id),
     CONSTRAINT fk_order_items_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
-    CONSTRAINT fk_order_items_menu_item FOREIGN KEY (menu_item_id) REFERENCES menu_items(id) ON DELETE RESTRICT
+    CONSTRAINT fk_order_items_menu_item FOREIGN KEY (menu_item_id) REFERENCES menu_items(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_order_items_preparing_by FOREIGN KEY (preparing_by_staff_id) REFERENCES staff(id),
+    CONSTRAINT fk_order_items_ready_by FOREIGN KEY (ready_by_staff_id) REFERENCES staff(id)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+  CREATE TABLE staff_activity_log (
+    id CHAR(36) NOT NULL DEFAULT (UUID()),
+    staff_id CHAR(36) NOT NULL,
+    action_type VARCHAR(64) NOT NULL,
+    reference_type VARCHAR(64) NOT NULL,
+    reference_id CHAR(36) NULL,
+    notes TEXT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_staff_activity_log_staff_created (staff_id, created_at),
+    KEY idx_staff_activity_log_reference (reference_type, reference_id),
+    CONSTRAINT fk_staff_activity_log_staff FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE RESTRICT,
+    CONSTRAINT chk_activity_log_action CHECK (action_type IN (
+      'order_confirmed', 'order_rejected', 'order_item_rejected',
+      'session_opened', 'session_reset', 'bill_generated', 'bill_amended',
+      'payment_recorded', 'item_availability_toggled', 'direct_order_placed',
+      'staff_created', 'staff_revoked', 'menu_item_created',
+      'menu_item_updated', 'menu_item_deleted', 'order_item_preparing',
+      'order_item_ready'
+    )),
+    CONSTRAINT chk_activity_log_reference_type CHECK (reference_type IN (
+      'order', 'order_item', 'session', 'bill', 'menu_item', 'staff'
+    ))
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
   CREATE TABLE bills (

@@ -19,6 +19,9 @@ pids/
 *.pid
 *.pid.lock
 
+# Uploaded files
+uploads/
+
 # Coverage and test artifacts
 coverage/
 .nyc_output/

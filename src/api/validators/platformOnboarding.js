@@ -34,6 +34,28 @@ export const updateRestaurantBasicSchema = createRestaurantBasicSchema.partial()
   'At least one field is required for update',
 );
 
+export const updateRestaurantSchema = z.object({
+  name: z.string().trim().min(2).max(150).optional(),
+  address: z.string().trim().min(3).max(240).optional(),
+  city: z.string().trim().min(2).max(100).optional(),
+  state: z.string().trim().min(2).max(100).optional(),
+  pincode: z.string().trim().min(4).max(12).optional(),
+  timezone: z.string().trim().min(3).max(64).optional(),
+  contactEmail: z.string().email().optional(),
+}).strict().refine((value) => Object.keys(value).length > 0, 'At least one field is required for update');
+
+export const updateRestaurantBrandingSchema = z.object({
+  logoUrl: z.string().url().max(500).nullable().optional(),
+  welcomeMessage: z.string().max(2000).nullable().optional(),
+}).strict().refine((value) => Object.keys(value).length > 0, 'At least one branding field is required');
+
+export const updateRestaurantGstSchema = z.object({
+  gstEnabled: z.coerce.boolean(),
+  gstNumber: z.string().trim().max(50).nullable().optional(),
+  legalName: z.string().trim().max(200).nullable().optional(),
+  address: z.string().trim().max(240).nullable().optional(),
+}).strict().refine((value) => !value.gstEnabled || Boolean(value.gstNumber), 'GST number is required when GST is enabled');
+
 export const floorsAndTablesSchema = z.object({
   floors: z.array(
     z.object({

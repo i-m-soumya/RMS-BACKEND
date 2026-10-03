@@ -55,7 +55,117 @@ async function ensureColumnNullable(tableName, columnName) {
   await db.raw(`ALTER TABLE \`${tableName}\` MODIFY \`${columnName}\` ${column.columnType} NULL`);
 }
 
+async function hasConstraint(tableName, constraintName) {
+  const [rows] = await db.raw(
+    `SELECT COUNT(*) AS count
+     FROM information_schema.table_constraints
+     WHERE table_schema = DATABASE()
+       AND table_name = ?
+       AND constraint_name = ?`,
+    [tableName, constraintName],
+  );
+
+  return Number(rows[0]?.count || 0) > 0;
+}
+
+async function ensureStaffActivityActionConstraint() {
+  if (!(await db.schema.hasTable('staff_activity_log'))) {
+    await db.raw(`
+      CREATE TABLE staff_activity_log (
+        id CHAR(36) NOT NULL DEFAULT (UUID()),
+        staff_id CHAR(36) NOT NULL,
+        action_type VARCHAR(64) NOT NULL,
+        reference_type VARCHAR(64) NOT NULL,
+        reference_id CHAR(36) NULL,
+        notes TEXT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY idx_staff_activity_log_staff_created (staff_id, created_at),
+        KEY idx_staff_activity_log_reference (reference_type, reference_id),
+        CONSTRAINT fk_staff_activity_log_staff FOREIGN KEY (staff_id) REFERENCES staff(id) ON DELETE RESTRICT,
+        CONSTRAINT chk_activity_log_action CHECK (action_type IN (
+          'order_confirmed', 'order_rejected', 'order_item_rejected',
+          'session_opened', 'session_reset', 'bill_generated', 'bill_amended',
+          'payment_recorded', 'item_availability_toggled', 'direct_order_placed',
+          'staff_created', 'staff_revoked', 'menu_item_created',
+          'menu_item_updated', 'menu_item_deleted', 'order_item_preparing',
+          'order_item_ready'
+        )),
+        CONSTRAINT chk_activity_log_reference_type CHECK (reference_type IN (
+          'order', 'order_item', 'session', 'bill', 'menu_item', 'staff'
+        ))
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    return;
+  }
+
+  if (await hasConstraint('staff_activity_log', 'chk_activity_log_action')) {
+    await db.raw('ALTER TABLE staff_activity_log DROP CHECK chk_activity_log_action');
+  }
+
+  await db.raw(`
+    ALTER TABLE staff_activity_log
+    ADD CONSTRAINT chk_activity_log_action CHECK (action_type IN (
+      'order_confirmed', 'order_rejected', 'order_item_rejected',
+      'session_opened', 'session_reset', 'bill_generated', 'bill_amended',
+      'payment_recorded', 'item_availability_toggled', 'direct_order_placed',
+      'staff_created', 'staff_revoked', 'menu_item_created',
+      'menu_item_updated', 'menu_item_deleted', 'order_item_preparing',
+      'order_item_ready'
+    ))
+  `);
+}
+
 export async function up() {
+  await addColumnIfMissing('order_items', 'preparing_by_staff_id', (table) => table.string('preparing_by_staff_id', 36).nullable());
+  await addColumnIfMissing('order_items', 'ready_by_staff_id', (table) => table.string('ready_by_staff_id', 36).nullable());
+  await addIndexIfMissing(
+    'fk_order_items_preparing_by',
+    'CREATE INDEX fk_order_items_preparing_by ON order_items(preparing_by_staff_id)',
+  );
+  await addIndexIfMissing(
+    'fk_order_items_ready_by',
+    'CREATE INDEX fk_order_items_ready_by ON order_items(ready_by_staff_id)',
+  );
+  await addForeignKeyIfMissing(
+    'fk_order_items_preparing_by',
+    'ALTER TABLE order_items ADD CONSTRAINT fk_order_items_preparing_by FOREIGN KEY (preparing_by_staff_id) REFERENCES staff(id)',
+  );
+  await addForeignKeyIfMissing(
+    'fk_order_items_ready_by',
+    'ALTER TABLE order_items ADD CONSTRAINT fk_order_items_ready_by FOREIGN KEY (ready_by_staff_id) REFERENCES staff(id)',
+  );
+  await ensureStaffActivityActionConstraint();
+
+  if (!(await db.schema.hasTable('menu_item_images'))) {
+    await db.raw(`
+      CREATE TABLE menu_item_images (
+        id CHAR(36) NOT NULL,
+        menu_item_id CHAR(36) NOT NULL,
+        restaurant_id CHAR(36) NOT NULL,
+        image_url VARCHAR(500) NOT NULL,
+        display_order SMALLINT NOT NULL DEFAULT 0,
+        is_primary TINYINT(1) NOT NULL DEFAULT 0,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        deleted_at DATETIME NULL,
+        PRIMARY KEY (id),
+        KEY idx_menu_item_images_item (menu_item_id, display_order, deleted_at),
+        KEY idx_menu_item_images_restaurant (restaurant_id, deleted_at),
+        CONSTRAINT fk_menu_item_images_item FOREIGN KEY (menu_item_id) REFERENCES menu_items(id),
+        CONSTRAINT fk_menu_item_images_restaurant FOREIGN KEY (restaurant_id) REFERENCES restaurants(id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+
+    await db.raw(`
+      INSERT INTO menu_item_images
+        (id, menu_item_id, restaurant_id, image_url, display_order, is_primary, created_at)
+      SELECT UUID(), mi.id, mi.restaurant_id, mi.image_url, 0, 1, NOW()
+      FROM menu_items mi
+      WHERE mi.image_url IS NOT NULL
+        AND mi.deleted_at IS NULL
+    `);
+  }
+
   await addColumnIfMissing('restaurants', 'legal_name', (table) => table.string('legal_name', 200).nullable());
   await addColumnIfMissing('restaurants', 'address', (table) => table.string('address', 255).nullable());
   await addColumnIfMissing('restaurants', 'state', (table) => table.string('state', 100).nullable());
