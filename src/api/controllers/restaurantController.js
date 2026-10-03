@@ -83,6 +83,13 @@ async function findRestaurantTable(restaurantId, tableNumber) {
   return table || null;
 }
 
+export function resolveRestaurantTableParams(params) {
+  return {
+    restaurantKey: params.slug ?? params.id,
+    tableNumber: params.tableNumber ?? params.tableId,
+  };
+}
+
 export const getRestaurant = async (req, res, next) => {
   try {
     const { slug } = req.params;
@@ -174,8 +181,8 @@ export const getRestaurantMenu = async (req, res, next) => {
 
 export const getTable = async (req, res, next) => {
   try {
-    const { slug, tableNumber } = req.params;
-    const restaurant = await findRestaurantBySlug(slug);
+    const { restaurantKey, tableNumber } = resolveRestaurantTableParams(req.params);
+    const restaurant = await findRestaurantBySlug(restaurantKey);
 
     if (!restaurant) {
       return res.status(404).json({ code: 'RESTAURANT_NOT_FOUND', message: 'Restaurant not found' });
