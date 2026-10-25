@@ -621,7 +621,13 @@ export async function confirmTrial(req, res) {
   } catch (error) {
     if (error.code === 'SIGNUP_NOT_FOUND') return sendError(res, 404, 'SIGNUP_NOT_FOUND', 'This signup could not be found or has expired.');
     if (error.code === 'ER_DUP_ENTRY') return sendError(res, 409, 'ACCOUNT_EXISTS', 'An account already exists for these details.');
-    logger.error({ code: error.code }, 'Trial confirmation failed');
+    logger.error({
+      requestId: req.requestId,
+      code: error.code || 'UNKNOWN',
+      errno: error.errno,
+      sqlState: error.sqlState,
+      message: error.message,
+    }, 'Trial confirmation failed');
     return sendError(res, 503, 'TRIAL_CONFIRM_FAILED', 'Unable to set up the trial right now. Please retry.');
   }
 }
