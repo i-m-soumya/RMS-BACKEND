@@ -4,7 +4,7 @@ import express from 'express';
 import request from 'supertest';
 import signupRoutes from '../api/routes/signup.js';
 import { appConfig } from '../config/app.config.js';
-import { createOtpEmail, createWelcomeEmail } from '../mailer/templates.js';
+import { createContactNotificationEmail, createOtpEmail, createWelcomeEmail } from '../mailer/templates.js';
 import { DummyPaymentProvider, DummySmsProvider } from '../services/signupProviders.js';
 
 function app() {
@@ -70,4 +70,17 @@ test('verification and welcome templates include text and safe branded HTML', ()
   assert.match(welcome.text, /Next steps/);
   assert.match(welcome.html, /console\.restro360\.tech/);
   assert.doesNotMatch(welcome.text, /password:/i);
+});
+
+test('contact notification email escapes submitted content for HTML', () => {
+  const email = createContactNotificationEmail({
+    name: '<Owner>',
+    email: 'owner@example.test',
+    restaurantName: '<Cafe>',
+    message: '<script>alert(1)</script>',
+  });
+  assert.match(email.subject, /<Cafe>/);
+  assert.match(email.text, /<script>alert\(1\)<\/script>/);
+  assert.match(email.html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  assert.doesNotMatch(email.html, /<script>/);
 });

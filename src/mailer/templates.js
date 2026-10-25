@@ -47,3 +47,34 @@ export function createWelcomeEmail({ ownerName, restaurantName, consoleUrl = mai
       <p>You can sign in with the email and password you selected during signup. We will never include your password in an email.</p>`),
   };
 }
+
+export function createContactNotificationEmail({ name, email, phone, restaurantName, city, message }) {
+  const safeName = escapeHtml(name);
+  const safeEmail = escapeHtml(email);
+  const safePhone = escapeHtml(phone || 'Not provided');
+  const safeRestaurant = escapeHtml(restaurantName);
+  const safeCity = escapeHtml(city || 'Not provided');
+  const safeMessage = escapeHtml(message || 'No message provided').replace(/\r?\n/g, '<br>');
+  return {
+    subject: `New Restro360 contact request: ${restaurantName}`,
+    text: [
+      'A new contact request was submitted on the Restro360 website.',
+      '',
+      `Name: ${name}`,
+      `Email: ${email}`,
+      `Phone: ${phone || 'Not provided'}`,
+      `Restaurant: ${restaurantName}`,
+      `City: ${city || 'Not provided'}`,
+      '',
+      'Message:',
+      message || 'No message provided',
+    ].join('\n'),
+    html: layout(`<p>A new contact request was submitted on the Restro360 website.</p>
+      <dl><dt><strong>Name</strong></dt><dd>${safeName}</dd>
+      <dt><strong>Email</strong></dt><dd>${safeEmail}</dd>
+      <dt><strong>Phone</strong></dt><dd>${safePhone}</dd>
+      <dt><strong>Restaurant</strong></dt><dd>${safeRestaurant}</dd>
+      <dt><strong>City</strong></dt><dd>${safeCity}</dd></dl>
+      <p><strong>Message</strong></p><p>${safeMessage}</p>`),
+  };
+}

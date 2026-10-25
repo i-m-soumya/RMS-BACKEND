@@ -33,7 +33,7 @@ export async function sendStaffCredentialsEmail({
   tempPassword,
 }) {
   const transporter = buildTransporter();
-  const from = process.env.SMTP_FROM || 'no-reply@rms.local';
+  const from = process.env.SMTP_FROM || process.env.MAIL_FROM || 'no-reply@rms.local';
   const subject = `Your ${restaurantName} RMS Admin Access`;
   const roleLabel = role === 'restaurant_admin'
     ? 'Restaurant Admin'
@@ -65,7 +65,9 @@ export async function sendStaffCredentialsEmail({
 
   const result = await transporter.sendMail({
     from,
-    ...(process.env.SMTP_REPLY_TO && { replyTo: process.env.SMTP_REPLY_TO }),
+    ...((process.env.SMTP_REPLY_TO || process.env.MAIL_REPLY_TO) && {
+      replyTo: process.env.SMTP_REPLY_TO || process.env.MAIL_REPLY_TO,
+    }),
     to,
     subject,
     text,

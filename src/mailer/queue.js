@@ -3,7 +3,7 @@ import IORedis from 'ioredis';
 import { Queue, Worker, DelayedError } from 'bullmq';
 import { logger } from '../config/logger.js';
 import { mailConfig } from '../config/mail.config.js';
-import { createOtpEmail, createWelcomeEmail } from './templates.js';
+import { createContactNotificationEmail, createOtpEmail, createWelcomeEmail } from './templates.js';
 import { createTransport, readSmtpEnv, verifyOnStartup } from './transport.js';
 import { redis } from '../services/redis.js';
 
@@ -44,10 +44,15 @@ function redisConnection() {
   });
 }
 
+function safeMailErrorMessage(error) {
+  return String(error?.message || 'Unknown mail delivery error')
+    .replace(/\b[\w.+-]+@[\w.-]+\.[A-Z]{2,}\b/gi, '[redacted-email]');
+}
+
 export async function startMailQueue() {
   if (queue) return;
   if (!redis.isReady) {
-    logger.error('Mail queue not started because Redis is unavailable');
+    logger.error({ redisOpen: redis.isOpen, redisReady: redis.isReady }, 'Mail queue not started because Redis is unavailable');
     return;
   }
   try {
@@ -57,12 +62,13 @@ export async function startMailQueue() {
     logger.error({ message: error.message }, 'SMTP mail delivery is not configured');
     return;
   }
-  await verifyOnStartup(transporter, logger);
+  const smtpReady = await verifyOnStartup(transporter, logger);
+  if (!smtpReady) logger.warn('SMTP verification failed; queued messages may retry until the relay is available');
 
   producerConnection = redisConnection();
   workerConnection = redisConnection();
-  producerConnection.on('error', (error) => logger.error({ code: error.code }, 'Mail queue Redis producer error'));
-  workerConnection.on('error', (error) => logger.error({ code: error.code }, 'Mail queue Redis worker error'));
+  producerConnection.on('error', (error) => logger.error({ code: error.code, message: error.message }, 'Mail queue Redis producer error'));
+  workerConnection.on('error', (error) => logger.error({ code: error.code, message: error.message }, 'Mail queue Redis worker error'));
   await Promise.all([producerConnection.connect(), workerConnection.connect()]);
   queue = new Queue(mailConfig.queue.name, {
     connection: producerConnection,
@@ -78,7 +84,16 @@ export async function startMailQueue() {
     concurrency: 3,
   });
   worker.on('failed', (job, error) => {
-    logger.error({ jobId: job?.id, code: error.code }, 'Mail delivery failed');
+    logger.error({
+      jobId: job?.id,
+      mailType: job?.data?.type,
+      attempt: job?.attemptsMade,
+      maxAttempts: job?.opts?.attempts,
+      code: error.code || 'UNKNOWN',
+      command: error.command,
+      responseCode: error.responseCode,
+      message: safeMailErrorMessage(error),
+    }, 'Mail delivery attempt failed');
   });
   worker.on('error', (error) => {
     logger.error({ code: error.code, message: error.message }, 'Mail queue worker error');
@@ -118,7 +133,11 @@ async function deliverMail(job) {
   }
 
   const payload = decryptPayload(encryptedPayload);
-  const message = type === 'otp' ? createOtpEmail(payload) : createWelcomeEmail(payload);
+  const message = type === 'otp'
+    ? createOtpEmail(payload)
+    : type === 'welcome'
+      ? createWelcomeEmail(payload)
+      : createContactNotificationEmail(payload);
   const result = await transporter.sendMail({
     from: smtpEnv.from,
     replyTo: smtpEnv.replyTo,
@@ -128,19 +147,38 @@ async function deliverMail(job) {
     html: message.html,
     headers: { 'X-Entity-Ref-ID': idempotencyKey },
   });
+  const acceptedCount = result.accepted?.length ?? 0;
+  const rejectedCount = result.rejected?.length ?? 0;
+  if (rejectedCount > 0) {
+    logger.warn({ jobId: job.id, rejectedCount, responseCode: result.responseCode || null }, 'SMTP relay rejected one or more recipients');
+  }
+  if (acceptedCount === 0) {
+    throw Object.assign(new Error('SMTP relay accepted no recipients'), {
+      code: 'SMTP_NO_RECIPIENTS',
+      responseCode: result.responseCode,
+    });
+  }
   await redisCommand('set', deliveredKey, '1', 'EX', 7 * 24 * 60 * 60, 'NX');
-  logger.info({ jobId: job.id, providerMessageId: result.messageId || null }, 'Mail delivered');
+  logger.info({
+    jobId: job.id,
+    providerMessageId: result.messageId || null,
+    responseCode: result.responseCode || null,
+    acceptedCount,
+    rejectedCount,
+  }, 'Mail accepted by SMTP relay');
   return { messageId: result.messageId || null };
 }
 
 export async function enqueueMail({ type, idempotencyKey, ...payload }) {
   if (!queue) throw Object.assign(new Error('SMTP mail delivery is unavailable'), { code: 'MAIL_UNAVAILABLE' });
-  if (!['otp', 'welcome'].includes(type)) throw new Error('Unsupported mail type');
+  if (!['otp', 'welcome', 'contact'].includes(type)) throw new Error('Unsupported mail type');
   const encryptedPayload = encryptPayload(payload);
-  await queue.add(type, { type, idempotencyKey, encryptedPayload }, {
+  const job = await queue.add(type, { type, idempotencyKey, encryptedPayload }, {
     jobId: idempotencyKey,
     priority: type === 'otp' ? mailConfig.queue.priority.otp : mailConfig.queue.priority.transactional,
   });
+  logger.info({ jobId: job.id, mailType: type }, 'Mail queued');
+  return job.id;
 }
 
 export async function stopMailQueue() {

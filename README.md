@@ -14,6 +14,16 @@ npm start
 
 The self-signup schema is migration `020_self_signup`. Expired, incomplete pending signups are cleaned up hourly. Completed signups and their subscriptions are retained.
 
+### Coolify deployments
+
+For the Coolify backend application, set the **Pre-deployment Command** to:
+
+```sh
+npm run migrate
+```
+
+Run it from the backend app root, with the same production database environment and network access as the API. Keep it as a single pre-deployment command, not the Dockerfile/start command; the migration runner will skip IDs already recorded in `schema_migrations`. Check the deployment logs for `Migrations complete.` before treating the release as healthy.
+
 ## SMTP setup
 
 Set only these mail-specific environment values on the service that sends mail. Keep `SMTP_PASS` secret and never commit its value:

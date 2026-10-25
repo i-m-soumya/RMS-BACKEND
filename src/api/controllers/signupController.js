@@ -213,7 +213,13 @@ export async function startSignup(req, res) {
       }
       return sendError(res, 409, 'ACCOUNT_EXISTS', 'An account already exists for these details.');
     }
-    logger.error({ code: error.code }, 'Signup start failed');
+    logger.error({
+      requestId: req.requestId,
+      code: error.code || 'UNKNOWN',
+      errno: error.errno,
+      sqlState: error.sqlState,
+      message: error.message,
+    }, 'Signup start failed');
     return sendError(res, 503, 'SIGNUP_UNAVAILABLE', 'Signup is temporarily unavailable. Please try again.');
   }
 }
@@ -286,7 +292,13 @@ async function sendOtp(req, res, channel) {
     return res.json({ resendIn: appConfig.otp.resendCooldownSeconds });
   } catch (error) {
     if (error.status === 429) return sendError(res, 429, error.code, error.message, error.retryAfter);
-    logger.error({ code: error.code, channel }, 'Signup verification send failed');
+    logger.error({
+      requestId: req.requestId,
+      code: error.code || 'UNKNOWN',
+      errno: error.errno,
+      channel,
+      message: error.message,
+    }, 'Signup verification send failed');
     return sendError(res, 503, 'OTP_SEND_FAILED', 'Unable to send a verification code right now. Please try again.');
   }
 }
