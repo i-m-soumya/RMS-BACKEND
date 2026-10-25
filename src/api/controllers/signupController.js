@@ -433,7 +433,7 @@ async function createRestaurantAndSubscription(trx, signup, idempotencyKey, auto
     legal_name: signup.restaurant_name,
     slug: restaurantSlug,
     city: '',
-    state: null,
+    state: '',
     country: 'India',
     timezone: 'Asia/Kolkata',
     contact_email: signup.email,
