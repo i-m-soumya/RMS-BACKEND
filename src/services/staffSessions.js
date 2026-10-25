@@ -26,7 +26,7 @@ export async function ensureStaffSessionRefreshHashColumn() {
   }
 }
 
-export async function createStaffSession({ staffId, token, refreshToken, req, sessionId = randomUUID() }) {
+export async function createStaffSession({ staffId, token, refreshToken, req, sessionId = randomUUID(), trx = db }) {
   await ensureStaffSessionRefreshHashColumn();
 
   const insertData = {
@@ -46,7 +46,7 @@ export async function createStaffSession({ staffId, token, refreshToken, req, se
     }
   }
 
-  await db('staff_sessions').insert(insertData);
+  await trx('staff_sessions').insert(insertData);
 
   return sessionId;
 }

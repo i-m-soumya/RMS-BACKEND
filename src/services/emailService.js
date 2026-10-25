@@ -1,23 +1,13 @@
 import nodemailer from 'nodemailer';
+import { createTransport as createVerifiedTransport } from '../mailer/transport.js';
 
 function buildTransporter() {
-  if (process.env.SMTP_HOST) {
-    return nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT || 587),
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: process.env.SMTP_USER
-        ? {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS,
-          }
-        : undefined,
-    });
+  try {
+    return createVerifiedTransport();
+  } catch (error) {
+    if (process.env.SMTP_HOST) throw error;
+    return nodemailer.createTransport({ jsonTransport: true });
   }
-
-  return nodemailer.createTransport({
-    jsonTransport: true,
-  });
 }
 
 export async function sendAdminCredentialsEmail({
@@ -43,7 +33,7 @@ export async function sendStaffCredentialsEmail({
   tempPassword,
 }) {
   const transporter = buildTransporter();
-  const from = process.env.MAIL_FROM || 'no-reply@rms.local';
+  const from = process.env.SMTP_FROM || 'no-reply@rms.local';
   const subject = `Your ${restaurantName} RMS Admin Access`;
   const roleLabel = role === 'restaurant_admin'
     ? 'Restaurant Admin'
@@ -73,7 +63,14 @@ export async function sendStaffCredentialsEmail({
     <p>Please reset your password after first login.</p>
   `;
 
-  const result = await transporter.sendMail({ from, to, subject, text, html });
+  const result = await transporter.sendMail({
+    from,
+    ...(process.env.SMTP_REPLY_TO && { replyTo: process.env.SMTP_REPLY_TO }),
+    to,
+    subject,
+    text,
+    html,
+  });
 
   return {
     sent: true,

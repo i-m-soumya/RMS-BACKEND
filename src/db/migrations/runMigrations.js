@@ -15,6 +15,7 @@ import { MIGRATION_ID as NOTIFICATIONS_PIPELINE_MIGRATION_ID, up as migrateNotif
 import { MIGRATION_ID as MENU_ITEM_AVAILABILITY_REASON_MIGRATION_ID, up as migrateMenuItemAvailabilityReason } from './017_menu_item_availability_reason.js';
 import { MIGRATION_ID as MENU_ADDON_MAP_REFERENCE_MIGRATION_ID, up as migrateMenuAddonMapReference } from './018_menu_addon_map_reference.js';
 import { MIGRATION_ID as MENU_ADDON_MAP_REFERENCE_REPAIR_MIGRATION_ID, up as migrateMenuAddonMapReferenceRepair } from './019_menu_addon_map_reference_repair.js';
+import { MIGRATION_ID as SELF_SIGNUP_MIGRATION_ID, up as migrateSelfSignup } from './020_self_signup.js';
 
 async function ensureMigrationsTable() {
   const exists = await db.schema.hasTable('schema_migrations');
@@ -92,6 +93,7 @@ async function run() {
     await applyMigration(MENU_ITEM_AVAILABILITY_REASON_MIGRATION_ID, migrateMenuItemAvailabilityReason);
     await applyMigration(MENU_ADDON_MAP_REFERENCE_MIGRATION_ID, migrateMenuAddonMapReference);
     await applyMigration(MENU_ADDON_MAP_REFERENCE_REPAIR_MIGRATION_ID, migrateMenuAddonMapReferenceRepair);
+    await applyMigration(SELF_SIGNUP_MIGRATION_ID, migrateSelfSignup);
 
     console.log('Migrations complete.');
     process.exit(0);

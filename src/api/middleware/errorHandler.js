@@ -1,6 +1,9 @@
 import { logger } from '../../config/logger.js';
 
 export const errorHandler = (err, req, res, next) => {
+  const safePath = req.originalUrl
+    .replace(/(\/api\/signup\/)[a-f0-9]{64}/gi, '$1[redacted]')
+    .replace(/([?&]code=)[^&]+/gi, '$1[redacted]');
   logger.error({
     err: {
       message: err.message,
@@ -9,7 +12,7 @@ export const errorHandler = (err, req, res, next) => {
       ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
     },
     requestId: req.requestId,
-    path: req.originalUrl,
+    path: safePath,
     method: req.method
   }, 'Request failed');
 

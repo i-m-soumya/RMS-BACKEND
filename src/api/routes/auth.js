@@ -17,6 +17,8 @@ import {
   staffLoginSchema,
   refreshSchema
 } from '../validators/auth.js';
+import { exchangeHandoffCode } from '../controllers/signupController.js';
+import { handoffLimiter } from '../middleware/signupRateLimit.js';
 
 const router = express.Router();
 
@@ -27,5 +29,6 @@ router.post('/platform-admin-login', authLimiter, validate(staffLoginSchema), pl
 router.post('/console-login', authLimiter, validate(staffLoginSchema), consoleLogin);
 router.post('/refresh', authLimiter, validate(refreshSchema), refreshToken);
 router.post('/logout', authenticateToken, logout);
+router.post('/handoff/exchange', handoffLimiter, exchangeHandoffCode);
 
 export default router;

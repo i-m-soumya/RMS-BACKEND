@@ -26,7 +26,7 @@ function permissionsForStaffRole(role) {
   return ['menu:read', 'order:read', 'order:update'];
 }
 
-async function issueStaffSession(staff, req) {
+export async function issueStaffSession(staff, req, trx = db) {
   const sessionId = randomUUID();
   const userPayload = {
     id: staff.id,
@@ -40,8 +40,8 @@ async function issueStaffSession(staff, req) {
   };
   const token = signToken(userPayload);
   const refreshToken = signRefreshToken(userPayload);
-  await db('staff').where({ id: staff.id }).update({ last_login_at: new Date() });
-  await createStaffSession({ staffId: staff.id, token, refreshToken, req, sessionId });
+  await trx('staff').where({ id: staff.id }).update({ last_login_at: new Date() });
+  await createStaffSession({ staffId: staff.id, token, refreshToken, req, sessionId, trx });
   return { token, refreshToken, user: userPayload };
 }
 

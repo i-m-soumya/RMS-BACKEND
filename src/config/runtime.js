@@ -1,4 +1,6 @@
-export function parseCorsOrigins(rawOrigins) {
+import { appConfig } from './app.config.js';
+
+export function parseCorsOrigins(rawOrigins = appConfig.corsOrigins.join(',')) {
   if (!rawOrigins || typeof rawOrigins !== 'string') {
     return true;
   }

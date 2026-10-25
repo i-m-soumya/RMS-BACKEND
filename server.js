@@ -31,6 +31,12 @@ import notificationsRoutes from './src/api/routes/notifications.js';
 import platformRoutes from './src/api/routes/platform.js';
 import kitchenRoutes from './src/api/routes/kitchen.js';
 import publicMarketingRoutes from './src/api/routes/publicMarketing.js';
+import signupRoutes from './src/api/routes/signup.js';
+import onboardingRoutes from './src/api/routes/onboarding.js';
+import { appConfig } from './src/config/app.config.js';
+import { startSignupCleanup } from './src/services/signupCleanup.js';
+import { startMailQueue } from './src/mailer/queue.js';
+import { stopMailQueue } from './src/mailer/queue.js';
 
 dotenv.config();
 assertProductionEnv();
@@ -41,7 +47,7 @@ app.use('/uploads', express.static(uploadsDirectory));
 const httpServer = createServer(app);
 app.set('trust proxy', 2);
 
-const allowedCorsOrigins = parseCorsOrigins(process.env.CORS_ORIGINS || process.env.CORS_ORIGIN);
+const allowedCorsOrigins = parseCorsOrigins(appConfig.corsOrigins.join(','));
 const socketCorsOrigins = allowedCorsOrigins === true ? true : allowedCorsOrigins;
 
 const io = new Server(httpServer, {
@@ -62,9 +68,12 @@ app.use(cors({
   credentials: true
 }));
 app.use(morgan((tokens, req, res) => {
+  const safeUrl = (tokens.url(req, res) || '')
+    .replace(/(\/api\/signup\/)[a-f0-9]{64}/gi, '$1[redacted]')
+    .replace(/([?&]code=)[^&]+/gi, '$1[redacted]');
   logger.info({
     method: tokens.method(req, res),
-    url: tokens.url(req, res),
+    url: safeUrl,
     statusCode: Number(tokens.status(req, res) || 0),
     responseTimeMs: Number(tokens['response-time'](req, res) || 0),
     requestId: req.requestId
@@ -120,7 +129,14 @@ app.use('/api/admin', adminRoutes);
 app.use('/api', notificationsRoutes);
 app.use('/api/platform', platformRoutes);
 app.use('/api/kitchen', kitchenRoutes);
+
+startSignupCleanup();
+if (appConfig.smsProvider === 'dummy') {
+  logger.warn('Dummy SMS provider is active; TODO: configure real SMS before public launch');
+}
 app.use('/api/public', publicMarketingRoutes);
+app.use('/api/signup', signupRoutes);
+app.use('/api/onboarding', onboardingRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
@@ -128,6 +144,9 @@ setupSockets(io);
 
 await connectRedis().catch((error) => {
   logger.warn({ err: error.message }, 'Redis connection unavailable during startup');
+});
+await startMailQueue().catch((error) => {
+  logger.error({ err: error.message }, 'Mail queue could not start');
 });
 
 const startupDbHealth = await checkDbHealth();
@@ -173,7 +192,8 @@ async function gracefulShutdown(signal) {
       }),
       io.close(),
       db.destroy(),
-      closeRedis()
+      closeRedis(),
+      stopMailQueue()
     ]);
 
     logger.info('Graceful shutdown complete');

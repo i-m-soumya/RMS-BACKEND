@@ -3,6 +3,7 @@ import bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../../db/connection.js';
 import { sendAdminCredentialsEmail } from '../../services/emailService.js';
+import { normalizeRestaurantSlug } from '../../services/restaurantSlug.js';
 import {
   buildTableQrPayload,
   generateQrDataUrl,
@@ -15,12 +16,7 @@ function makeTempPassword() {
 }
 
 function ensureSlug(value) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
+  return normalizeRestaurantSlug(value);
 }
 
 function buildRestaurantRowSummary(row) {
@@ -36,6 +32,7 @@ function buildRestaurantRowSummary(row) {
     pincode: row.pincode || '',
     timezone: row.timezone || 'Asia/Kolkata',
     address: row.address || '',
+    source: row.source || 'platform-admin',
   };
 }
 
@@ -90,6 +87,7 @@ export const listRestaurants = async (req, res, next) => {
         'r.pincode',
         'r.timezone',
         'r.address',
+        'r.source',
       )
       .countDistinct({ table_count: 't.id' })
       .orderBy('r.created_at', 'desc')
@@ -279,6 +277,19 @@ export const saveFloorsAndTables = async (req, res, next) => {
       return res.status(404).json({ error: 'Restaurant not found' });
     }
 
+    if (req.onboardingSetup) {
+      const [{ tableCount }] = await db('tables').where({ restaurant_id: restaurantId }).count({ tableCount: 'id' });
+      if (Number(tableCount) > 0) {
+        return res.json({
+          data: {
+            restaurantId,
+            floorCount: Number(await db('floors').where({ restaurant_id: restaurantId }).count({ count: 'id' }).then((rows) => rows[0].count)),
+            tableCount: Number(tableCount),
+          },
+        });
+      }
+    }
+
     const normalizedTableNumbers = new Set();
     for (const floor of floors) {
       for (const table of floor.tables) {
@@ -382,7 +393,7 @@ export const generateRestaurantQRCodes = async (req, res, next) => {
         table_id: item.tableId,
         payload: item.qrPayload,
         generated_at: new Date(),
-        created_by_platform_admin_id: req.user.id,
+        created_by_platform_admin_id: req.user.role === 'platform_admin' ? req.user.id : null,
       });
     }
 

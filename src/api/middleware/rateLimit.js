@@ -8,9 +8,17 @@ export const globalLimiter = rateLimit({
   max: 1500,
   standardHeaders,
   legacyHeaders,
-  message: {
-    code: 'RATE_LIMITED',
-    message: 'Too many requests. Try again later.'
+  handler: (req, res, _next, options) => {
+    const message = 'Too many requests. Try again later.';
+    const contractRoute = req.originalUrl.startsWith('/api/signup')
+      || req.originalUrl.startsWith('/api/onboarding')
+      || req.originalUrl.startsWith('/api/auth/handoff');
+    if (contractRoute) {
+      return res.status(options.statusCode).json({
+        error: { code: 'RATE_LIMITED', message, retryAfter: Math.ceil(options.windowMs / 1000) }
+      });
+    }
+    return res.status(options.statusCode).json({ code: 'RATE_LIMITED', message });
   }
 });
 
