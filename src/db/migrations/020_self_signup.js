@@ -16,7 +16,7 @@ export async function up() {
     });
   }
 
-  if (!(await db.schema.hasColumn('pending_signups', 'email_verified_at'))) {
+  if (!(await db.schema.hasTable('pending_signups'))) {
     await db.schema.createTable('pending_signups', (table) => {
       table.string('token', 64).primary();
       table.string('owner_name', 100).notNullable();
